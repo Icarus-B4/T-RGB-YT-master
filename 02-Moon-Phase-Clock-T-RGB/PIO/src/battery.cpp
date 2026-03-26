@@ -17,64 +17,72 @@ void updateBattery(unsigned long currentMillis) {
     static float last_v = 0;
 
     // 1. Smooth Animation (every 20ms = 50fps)
-    // We update the arc rotation independently from the voltage polling
     if (currentMillis - last_anim_update >= 20) {
         last_anim_update = currentMillis;
         
         if (xSemaphoreTake(mutex, portMAX_DELAY)) {
             if ((autoCharging || manualCharging) && !isStandby) {
-                // Charging animation active
+                // Smooth frame update (2 degrees per 20ms = 100 deg/sec)
                 static int start_angle = 0;
                 start_angle = (start_angle + 2) % 360;
                 lv_arc_set_angles(ui_Arc_Battery, start_angle, (start_angle + 60) % 360);
                 lv_obj_clear_flag(ui_Arc_Battery, LV_OBJ_FLAG_HIDDEN);
             } else {
-                // Not charging or in Standby: hide the arc
                 lv_obj_add_flag(ui_Arc_Battery, LV_OBJ_FLAG_HIDDEN);
             }
             xSemaphoreGive(mutex);
         }
     }
 
-    // 2. Voltage & State Update (every 150ms)
-    // Slower polling for stability and power efficiency
-    if (currentMillis - last_v_update >= 150) {
+    // 2. Robust USB Power Detection (every 200ms)
+    if (currentMillis - last_v_update >= 200) {
         last_v_update = currentMillis;
 
         int32_t raw_volt = panel.getBattVoltage();
 
         if (filtered_volt == 0) filtered_volt = (float)raw_volt;
-        filtered_volt = (filtered_volt * 0.92f) + (raw_volt * 0.08f);
+        // Light filter for detection responsiveness
+        filtered_volt = (filtered_volt * 0.90f) + (raw_volt * 0.10f);
 
         float v = filtered_volt / 1000.0;
         int32_t volt = (int32_t)filtered_volt;
 
-        // Realistic percentage calculation
+        // Realistic percentage mapping
         int32_t percentage;
         if (v >= 4.2) percentage = 100;
         else if (v >= 4.0) percentage = 80 + (v - 4.0) * 100;
         else if (v >= 3.7) percentage = 40 + (v - 3.7) * 133;
         else if (v >= 3.5) percentage = 10 + (v - 3.5) * 150;
         else percentage = (v - 3.3) * 50;
-
+        
         if (percentage < 0) percentage = 0;
         if (percentage > 100) percentage = 100;
 
-        // 🔥 Trend-based charging detection
+        // 🔥 ROBUST "PORT-CHECK" LOGIC (Proxy for VBUS)
         float diff = v - last_v;
         last_v = v;
 
-        if (diff > 0.003) autoCharging = true;
-        else if (diff < -0.003) autoCharging = false;
+        // Detect Plug-In (Voltage Jump or High Threshold)
+        if (diff > 0.008 || v > 4.25) {
+            autoCharging = true;
+        } 
+        // Detect Unplug (Voltage Drop or Low Threshold)
+        else if (diff < -0.010 || v < 4.05) {
+            autoCharging = false;
+        }
+        // Special case: Battery is Full (4.2V) and plugged in
+        // If voltage stays high and stable near 4.2V, we keep autoCharging TRUE 
+        // to show the charging icon, but the animation loop handles the visual.
 
         if (xSemaphoreTake(mutex, portMAX_DELAY)) {
+            lv_obj_clear_flag(ui_Label_BatteryIcon, LV_OBJ_FLAG_HIDDEN);
+            
             if (autoCharging || manualCharging) {
-                lv_obj_clear_flag(ui_Label_BatteryIcon, LV_OBJ_FLAG_HIDDEN);
+                // Charging Icon (Blue Lightning/Symbol)
                 lv_label_set_text(ui_Label_BatteryIcon, LV_SYMBOL_CHARGE);
                 lv_obj_set_style_text_color(ui_Label_BatteryIcon, lv_color_hex(0x00A0FF), LV_PART_MAIN);
             } else {
-                lv_obj_clear_flag(ui_Label_BatteryIcon, LV_OBJ_FLAG_HIDDEN);
-
+                // Static Battery Icon based on percentage
                 if (percentage > 80) lv_label_set_text(ui_Label_BatteryIcon, LV_SYMBOL_BATTERY_FULL);
                 else if (percentage > 55) lv_label_set_text(ui_Label_BatteryIcon, LV_SYMBOL_BATTERY_3);
                 else if (percentage > 30) lv_label_set_text(ui_Label_BatteryIcon, LV_SYMBOL_BATTERY_2);
