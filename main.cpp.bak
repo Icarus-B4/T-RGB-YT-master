@@ -1,0 +1,529 @@
+#include <LilyGo_RGBPanel.h>
+#include <lvgl.h>
+#include <LV_Helper.h>
+#include <ui.h>
+#include <TFT_eSPI.h>
+#include <WiFi.h>
+#include <WiFiClientSecure.h>
+#include <HTTPClient.h>
+#include <ArduinoJson.h>
+#include <time.h>
+#include "DFRobot_DF2301Q.h"
+
+#include "credential.h" // Make sure to include your credentials here
+
+LilyGo_RGBPanel panel;
+TFT_eSPI tft = TFT_eSPI();
+DFRobot_DF2301Q_I2C asr;
+
+// Define the time zone
+const char* ntpServer = "pool.ntp.org";
+const char* timeZone = "CET-1CEST,M3.5.0,M10.5.0/3";
+
+SemaphoreHandle_t mutex;
+TaskHandle_t updateTimeTaskHandle = NULL;
+unsigned long previousMillis = 0;
+const long interval = 1000; // interval at which to update time (milliseconds)
+const long ntpSyncInterval = 60000; // interval at which to sync with NTP server (milliseconds)
+unsigned long previousNtpMillis = 0;
+unsigned long previousMoonUpdateMillis = 0; // timestamp for the last moon update
+
+// Function declarations
+void connectToWiFi();
+void updateTime(void * parameter);
+void updateUILabels(String formattedTime, String ampm, String formattedDate);
+void updateMoonData();
+String getMoonPhase(double age, double illumination);
+int getMoonImageIndex(double age, double illumination);
+
+extern const lv_img_dsc_t *ui_imgset_moon_[30];
+
+enum AppState { STATE_CLOCK, STATE_POMODORO, STATE_BREAK };
+AppState currentAppState = STATE_CLOCK;
+int32_t pomodoroSeconds = 0;
+
+void pomodoro_event_cb(lv_event_t * e) {
+    if (currentAppState == STATE_CLOCK) {
+        currentAppState = STATE_POMODORO;
+        pomodoroSeconds = 25 * 60; 
+        lv_obj_set_style_text_color(ui_Label_time, lv_color_hex(0xFF4500), LV_PART_MAIN); 
+        asr.playByCMDID(1); // "I am here"
+    } else {
+        currentAppState = STATE_CLOCK;
+        lv_obj_set_style_text_color(ui_Label_time, lv_color_hex(0xFFFFFF), LV_PART_MAIN);
+    }
+}
+
+lv_obj_t * ui_Arc_Battery;
+lv_obj_t * ui_Label_BatteryIcon;
+bool manualCharging = false;
+bool isStandby = false;
+
+void setup(void)
+{
+    Serial.begin(115200); 
+    delay(1000);
+
+    connectToWiFi();
+
+    configTzTime(timeZone, ntpServer);
+
+    if (!panel.begin()) {
+        while (1) {
+            Serial.println("Error, failed to initialize T-RGB Panel (XL9555)");
+            delay(1000);
+        }
+    }
+    
+    beginLvglHelper(panel);
+    ui_init();
+
+    // FORCE STABLE I2C CLOCK FOR VOICE MODULE (MUST BE AFTER UI_INIT)
+    // The panel library resets this to 400kHz/1MHz. We need 100kHz for the DF2301Q.
+    delay(200);
+    Wire.setClock(100000); 
+    delay(100);
+
+    // Initialize Voice Module (Now with stable clock)
+    if (!asr.begin()) {
+        Serial.println("Voice recognition module not found!");
+    } else {
+        asr.setVolume(7); // Range is 1-7, 7 is max volume
+        asr.setMuteMode(0); 
+        asr.setWakeTime(25); // Increased wake time slightly
+        Serial.println("Voice module initialized with 100kHz and Max Volume (7).");
+    }
+
+    // Create Circular Battery Arc (HIDDEN by default)
+    ui_Arc_Battery = lv_arc_create(lv_scr_act());
+    lv_obj_set_size(ui_Arc_Battery, 478, 478);
+    lv_arc_set_bg_angles(ui_Arc_Battery, 0, 360);
+    lv_arc_set_angles(ui_Arc_Battery, 0, 30); 
+    lv_obj_center(ui_Arc_Battery);
+    lv_obj_remove_style(ui_Arc_Battery, NULL, LV_PART_KNOB);
+    lv_obj_clear_flag(ui_Arc_Battery, LV_OBJ_FLAG_CLICKABLE);
+    lv_obj_add_flag(ui_Arc_Battery, LV_OBJ_FLAG_HIDDEN); // Only show when charging
+    lv_obj_set_style_arc_width(ui_Arc_Battery, 6, LV_PART_INDICATOR);
+    lv_obj_set_style_arc_color(ui_Arc_Battery, lv_color_hex(0x00A0FF), LV_PART_INDICATOR); // Blue (Matching Board LED)
+    lv_obj_set_style_arc_opa(ui_Arc_Battery, 0, LV_PART_MAIN); // No background
+
+    // Create Battery Icon next to Date (Moved and Font fix)
+    ui_Label_BatteryIcon = lv_label_create(ui_Screen1);
+    lv_obj_set_width(ui_Label_BatteryIcon, LV_SIZE_CONTENT);
+    lv_obj_set_height(ui_Label_BatteryIcon, LV_SIZE_CONTENT);
+    lv_obj_set_x(ui_Label_BatteryIcon, 185); // Further right
+    lv_obj_set_y(ui_Label_BatteryIcon, 25);  // Slightly down
+    lv_obj_set_align(ui_Label_BatteryIcon, LV_ALIGN_CENTER);
+    lv_label_set_text(ui_Label_BatteryIcon, LV_SYMBOL_BATTERY_FULL);
+    // Use default font or Montserrat if available to ensure symbols are visible
+    lv_obj_set_style_text_font(ui_Label_BatteryIcon, &lv_font_montserrat_20, LV_PART_MAIN); 
+    lv_obj_add_flag(ui_Label_BatteryIcon, LV_OBJ_FLAG_HIDDEN); // Hide initially to prevent white flash
+
+    lv_task_handler();
+
+    panel.setBrightness(128);
+
+    // Make time label clickable for Pomodoro
+    lv_obj_add_flag(ui_Label_time, LV_OBJ_FLAG_CLICKABLE);
+    lv_obj_add_event_cb(ui_Label_time, pomodoro_event_cb, LV_EVENT_CLICKED, NULL);
+
+    mutex = xSemaphoreCreateMutex();
+
+    xTaskCreate(updateTime, "UpdateTime", 8192, NULL, 1, &updateTimeTaskHandle);
+
+    updateMoonData();
+
+    // Initialize BOOT Button (GPIO 0)
+    pinMode(0, INPUT_PULLUP);
+}
+
+void loop()
+{
+    lv_task_handler();
+    
+    // Serial command parser for debugging
+    if (Serial.available()) {
+        char c = Serial.read();
+        if (c == 'c') {
+            manualCharging = !manualCharging;
+            Serial.printf("DEBUG: Manual Charging toggled to %s\n", manualCharging ? "ON" : "OFF");
+        } else if (c == 'p') {
+            if (currentAppState == STATE_CLOCK) currentAppState = STATE_POMODORO;
+            else currentAppState = STATE_CLOCK;
+            Serial.printf("DEBUG: State toggled to %d\n", currentAppState);
+        }
+    }
+
+    // Check for voice commands
+    uint8_t CMDID = asr.getCMDID();
+    if (CMDID != 0) {
+        Serial.printf("VOICE CMD received: %d\n", CMDID);
+        
+        if (CMDID == 5) { // "Starte Pomodoro"
+            if (currentAppState == STATE_CLOCK) {
+                currentAppState = STATE_POMODORO;
+                pomodoroSeconds = 25 * 60; 
+                lv_obj_set_style_text_color(ui_Label_time, lv_color_hex(0xFF4500), LV_PART_MAIN); 
+            }
+        } else if (CMDID == 6) { // "Stop Pomodoro"
+            if (currentAppState != STATE_CLOCK) {
+                currentAppState = STATE_CLOCK;
+                lv_obj_set_style_text_color(ui_Label_time, lv_color_hex(0xFFFFFF), LV_PART_MAIN);
+            }
+        } else if (CMDID == 7) { // "Reset Pomodoro"
+            currentAppState = STATE_CLOCK;
+            pomodoroSeconds = 0;
+            lv_obj_set_style_text_color(ui_Label_time, lv_color_hex(0xFFFFFF), LV_PART_MAIN);
+        } else if (CMDID == 8) { // "Laden an"
+            manualCharging = true;
+            Serial.println("Manual Charging: ON via Voice");
+        } else if (CMDID == 9) { // "Laden aus"
+            manualCharging = false;
+            Serial.println("Manual Charging: OFF via Voice");
+        } else if (CMDID == 104) { // "Turn off the Light" -> Standby
+            if (!isStandby) {
+                isStandby = true;
+                panel.setBrightness(0);
+                Serial.println("STANDBY: ON via Voice (104)");
+            }
+        } else if (CMDID == 103) { // "Turn on the Light" -> Wakeup
+            if (isStandby) {
+                isStandby = false;
+                panel.setBrightness(128); // Default brightness
+                Serial.println("STANDBY: OFF via Voice (103)");
+            }
+        }
+    }
+    
+    // Check BOOT button (GPIO 0) for Power Off (Deep Sleep)
+    static unsigned long buttonPressStart = 0;
+    if (digitalRead(0) == LOW) {
+        if (buttonPressStart == 0) {
+            buttonPressStart = millis();
+        } else if (millis() - buttonPressStart > 2000) {
+            // Power Off sequence (Deep Sleep)
+            Serial.println("Powering off (Deep Sleep)...");
+            
+            if (xSemaphoreTake(mutex, portMAX_DELAY)) {
+                lv_obj_t * label = lv_label_create(lv_scr_act());
+                lv_label_set_text(label, "Ausschalten...");
+                lv_obj_set_style_text_font(label, &lv_font_montserrat_20, 0);
+                lv_obj_center(label);
+                xSemaphoreGive(mutex);
+            }
+            lv_task_handler();
+            delay(1000);
+            
+            panel.sleep(); 
+        }
+    } else {
+        // Short press detected when released
+        if (buttonPressStart != 0 && millis() - buttonPressStart < 1000) {
+            if (isStandby) {
+                isStandby = false;
+                panel.setBrightness(128);
+                Serial.println("STANDBY: OFF via Button");
+            }
+        }
+        buttonPressStart = 0;
+    }
+
+    delay(20); // Reduced I2C polling frequency
+}
+
+void connectToWiFi() {
+    WiFi.begin(ssid, password);
+    Serial.print("Connecting to WiFi...");
+    while (WiFi.status() != WL_CONNECTED) {
+        delay(1000);
+        Serial.print(".");
+    }
+    Serial.println("Connected to WiFi");
+}
+
+void updateTime(void * parameter) {
+    for (;;) {
+        unsigned long currentMillis = millis();
+
+        if (isStandby) {
+            vTaskDelay(100 / portTICK_PERIOD_MS);
+            continue;
+        }
+
+        // ================= FIXED BATTERY LOGIC =================
+        static unsigned long last_ui_update = 0;
+        static float filtered_volt = 0;
+
+        if (currentMillis - last_ui_update > 120) { // langsamer = stabil
+            last_ui_update = currentMillis;
+
+            int32_t raw_volt = panel.getBattVoltage();
+
+            if (filtered_volt == 0) filtered_volt = (float)raw_volt;
+
+            // stabilerer Filter
+            filtered_volt = (filtered_volt * 0.92f) + (raw_volt * 0.08f);
+
+            float v = filtered_volt / 1000.0;
+            int32_t volt = (int32_t)filtered_volt;
+
+            // realistischere Prozent
+            int32_t percentage;
+            if (v >= 4.2) percentage = 100;
+            else if (v >= 4.0) percentage = 80 + (v - 4.0) * 100;
+            else if (v >= 3.7) percentage = 40 + (v - 3.7) * 133;
+            else if (v >= 3.5) percentage = 10 + (v - 3.5) * 150;
+            else percentage = (v - 3.3) * 50;
+
+            if (percentage < 0) percentage = 0;
+            if (percentage > 100) percentage = 100;
+
+            // 🔥 stabile Charging-Erkennung (Trend-basiert)
+            static bool autoCharging = false;
+            static float last_v = 0;
+
+            // Trend-Erkennung (Laden = Spannung steigt)
+            float diff = v - last_v;
+            last_v = v;
+
+            // Wenn Spannung merklich steigt → Laden
+            if (diff > 0.003) autoCharging = true;
+            // Wenn Spannung fällt → nicht Laden
+            else if (diff < -0.003) autoCharging = false;
+
+            static int debug_tick = 0;
+            if (debug_tick++ % 10 == 0) {
+                Serial.printf("BATTERY Raw: %dmV, Filtered: %dmV (%d%%), CHG: %d, MCHG: %d\n",
+                              raw_volt, volt, percentage, autoCharging, manualCharging);
+            }
+
+            if (xSemaphoreTake(mutex, portMAX_DELAY)) {
+
+                if (autoCharging || manualCharging) {
+
+                    // NICHT mehr verstecken → wirkt stabiler
+                    lv_obj_clear_flag(ui_Arc_Battery, LV_OBJ_FLAG_HIDDEN);
+                    lv_obj_clear_flag(ui_Label_BatteryIcon, LV_OBJ_FLAG_HIDDEN);
+
+                    lv_label_set_text(ui_Label_BatteryIcon, LV_SYMBOL_CHARGE);
+                    lv_obj_set_style_text_color(ui_Label_BatteryIcon, lv_color_hex(0x00A0FF), LV_PART_MAIN);
+
+                    static int start_angle = 0;
+                    start_angle = (start_angle + 4) % 360;
+
+                    lv_arc_set_angles(ui_Arc_Battery, start_angle, (start_angle + 60) % 360);
+
+                } else {
+
+                    lv_obj_add_flag(ui_Arc_Battery, LV_OBJ_FLAG_HIDDEN);
+                    lv_obj_clear_flag(ui_Label_BatteryIcon, LV_OBJ_FLAG_HIDDEN);
+
+                    if (percentage > 80) lv_label_set_text(ui_Label_BatteryIcon, LV_SYMBOL_BATTERY_FULL);
+                    else if (percentage > 55) lv_label_set_text(ui_Label_BatteryIcon, LV_SYMBOL_BATTERY_3);
+                    else if (percentage > 30) lv_label_set_text(ui_Label_BatteryIcon, LV_SYMBOL_BATTERY_2);
+                    else if (percentage > 10) lv_label_set_text(ui_Label_BatteryIcon, LV_SYMBOL_BATTERY_1);
+                    else lv_label_set_text(ui_Label_BatteryIcon, LV_SYMBOL_BATTERY_EMPTY);
+
+                    if (percentage > 20)
+                        lv_obj_set_style_text_color(ui_Label_BatteryIcon, lv_color_hex(0x00FF00), LV_PART_MAIN);
+                    else
+                        lv_obj_set_style_text_color(ui_Label_BatteryIcon, lv_color_hex(0xFF0000), LV_PART_MAIN);
+                }
+
+                xSemaphoreGive(mutex);
+            }
+        }
+
+        if (currentMillis - previousMillis >= interval) {
+            previousMillis = currentMillis;
+
+
+            time_t now;
+            struct tm timeinfo;
+            time(&now);
+            localtime_r(&now, &timeinfo);
+
+        // Auto-brightness Fix: enforce target brightness
+        int targetBrightness = (timeinfo.tm_hour >= 22 || timeinfo.tm_hour < 7) ? 20 : 160;
+        static int currentAppliedBrightness = -1;
+        if (targetBrightness != currentAppliedBrightness) {
+            currentAppliedBrightness = targetBrightness;
+            panel.setBrightness(targetBrightness);
+            Serial.printf("Time: %02d:%02d, Auto-Brightness applied: %d\n", timeinfo.tm_hour, timeinfo.tm_min, targetBrightness);
+        }
+
+
+
+            bool showClock = true;
+            if (currentAppState == STATE_POMODORO || currentAppState == STATE_BREAK) {
+                pomodoroSeconds--;
+                if (pomodoroSeconds < 0) {
+                    if (currentAppState == STATE_POMODORO) {
+                        currentAppState = STATE_BREAK;
+                        pomodoroSeconds = 5 * 60; 
+                        lv_obj_set_style_text_color(ui_Label_time, lv_color_hex(0x00FF00), LV_PART_MAIN); 
+                        asr.playByCMDID(5); // "Done"
+                    } else {
+                        currentAppState = STATE_CLOCK;
+                        lv_obj_set_style_text_color(ui_Label_time, lv_color_hex(0xFFFFFF), LV_PART_MAIN);
+                        asr.playByCMDID(1); // "I am here"
+                    }
+                }
+                
+                if (currentAppState != STATE_CLOCK) {
+                    showClock = false;
+                    int mins = pomodoroSeconds / 60;
+                    int secs = pomodoroSeconds % 60;
+                    char buf[10];
+                    snprintf(buf, sizeof(buf), "%02d:%02d", mins, secs);
+                    if (xSemaphoreTake(mutex, portMAX_DELAY)) {
+                        updateUILabels(String(buf), "", currentAppState == STATE_POMODORO ? "FOKUS" : "PAUSE");
+                        xSemaphoreGive(mutex);
+                    }
+                }
+            }
+
+            if (showClock) {
+                int hours = timeinfo.tm_hour;
+                int minutes = timeinfo.tm_min;
+                int seconds = timeinfo.tm_sec;
+
+                String ampm = (hours >= 12) ? "PM" : "AM";
+
+                char timeStr[9];
+                snprintf(timeStr, sizeof(timeStr), "%02d:%02d:%02d", hours, minutes, seconds);
+
+                char dateStr[11];
+                strftime(dateStr, sizeof(dateStr), "%d-%b-%y", &timeinfo);
+
+                if (xSemaphoreTake(mutex, portMAX_DELAY)) {
+                    updateUILabels(String(timeStr), ampm, String(dateStr));
+                    xSemaphoreGive(mutex);
+                }
+            }
+
+            // Call updateMoonData every minute
+            if (currentMillis - previousMoonUpdateMillis >= 60000) {
+                previousMoonUpdateMillis = currentMillis;
+                updateMoonData();
+            }
+        }
+
+        if (currentMillis - previousNtpMillis >= ntpSyncInterval) {
+            previousNtpMillis = currentMillis;
+            configTzTime(timeZone, ntpServer);
+            Serial.println("Synced with NTP server");
+        }
+
+        vTaskDelay(10 / portTICK_PERIOD_MS);
+    }
+}
+
+void updateUILabels(String formattedTime, String ampm, String formattedDate) {
+    lv_label_set_text(ui_Label_time, formattedTime.c_str());
+    lv_label_set_text(ui_Label_ampm, ampm.c_str());
+    lv_label_set_text(ui_Label_date, formattedDate.c_str());
+}
+
+void updateMoonData() {
+    // Ensure WiFi is connected
+    if (WiFi.status() != WL_CONNECTED) {
+        Serial.println("WiFi not connected. Cannot fetch moon data.");
+        return;
+    }
+
+    // Sync time with NTP server to ensure it is set correctly
+    configTzTime(timeZone, ntpServer);
+    delay(1000); // Wait a moment to ensure time is synced
+
+    // Get the current date and time
+    time_t now;
+    struct tm timeinfo;
+    time(&now);
+    gmtime_r(&now, &timeinfo); // IMPORTANT: Use UTC for NASA Dial-A-Moon API
+
+    // Ensure the timeinfo structure is properly populated
+    if (timeinfo.tm_year < (2023 - 1900)) { // Check if the year is valid
+        Serial.println("Time not set correctly.");
+        return;
+    }
+
+    // Format the date and time as required by the URL
+    char dateStr[25];
+    if (strftime(dateStr, sizeof(dateStr), "%Y-%m-%dT%H:%M", &timeinfo) == 0) {
+        Serial.println("Failed to format date string.");
+        return;
+    }
+    
+    String url = "https://svs.gsfc.nasa.gov/api/dialamoon/";
+    url += dateStr;
+
+    // Print the URL for debugging
+    Serial.print("Fetching moon data from URL: ");
+    Serial.println(url);
+
+    WiFiClientSecure client;
+    client.setInsecure();  // Disable SSL certificate verification
+
+    HTTPClient http;
+    http.begin(client, url);
+    int httpCode = http.GET();
+    
+    if (httpCode == HTTP_CODE_OK) {
+        String payload = http.getString();
+        Serial.println("Moon data fetched:");
+        Serial.println(payload);
+        
+        DynamicJsonDocument doc(2048);
+        deserializeJson(doc, payload);
+        
+        double age = doc["age"].as<double>();
+        double illumination = doc["phase"].as<double>(); // Illumination percentage (0-100)
+        
+        Serial.printf("Moon age (UTC): %.3f, Illumination: %.2f%%\n", age, illumination);
+        
+        if (xSemaphoreTake(mutex, portMAX_DELAY)) {
+            String moonPhase = getMoonPhase(age, illumination);
+            lv_label_set_text(ui_Label_phase, moonPhase.c_str());
+            int imageIndex = getMoonImageIndex(age, illumination);
+            Serial.printf("Selected Image Index: %d (mapped to Moon_%d.png)\n", imageIndex, imageIndex + 1);
+            lv_img_set_src(ui_Img_moon, ui_imgset_moon_[imageIndex]);
+            xSemaphoreGive(mutex);
+        }
+        
+    } else {
+        Serial.printf("Failed to fetch moon data, error: %d\n", httpCode);
+    }
+    
+    http.end();
+}
+
+String getMoonPhase(double age, double illumination) {
+    bool waxing = (age < 14.76); // Average time of full moon
+
+    if (illumination < 2.0) return "Neumond";
+    if (illumination > 98.0) return "Vollmond";
+
+    if (illumination >= 2.0 && illumination < 48.0) {
+        return waxing ? "Zun. Sichel" : "Abn. Sichel";
+    }
+    if (illumination >= 48.0 && illumination <= 52.0) {
+        return waxing ? "Erstes Viertel" : "Letztes Viertel";
+    }
+    if (illumination > 52.0 && illumination <= 98.0) {
+        return waxing ? "Zun. Dreiviertel" : "Abn. Dreiviertel";
+    }
+    return "Unbekannt";
+}
+
+int getMoonImageIndex(double age, double illumination) {
+    bool waxing = (age < 14.76);
+    double index;
+    if (waxing) {
+        index = (illumination / 100.0) * 15.0; // 0 (New) -> 15 (Full)
+    } else {
+        index = 30.0 - (illumination / 100.0) * 15.0; // 15 (Full) -> 30 (New)
+    }
+    int result = (int)(index + 0.5); // Round to nearest image
+    return result % 30;
+}

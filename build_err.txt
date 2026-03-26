@@ -1,0 +1,54 @@
+Processing T-RGB (platform: espressif32@6.3.0; board: LilyGo-T-RGB; framework: arduino)
+--------------------------------------------------------------------------------
+Verbose mode can be enabled via `-v, --verbose` option
+CONFIGURATION: https://docs.platformio.org/page/boards/espressif32/LilyGo-T-RGB.html
+PLATFORM: Espressif 32 (6.3.0) > LilyGo T-RGB (16M Flash 8M OPI PSRAM )
+HARDWARE: ESP32S3 240MHz, 320KB RAM, 16MB Flash
+DEBUG: Current (esp-builtin) On-board (esp-builtin) External (cmsis-dap, esp-bridge, esp-prog, iot-bus-jtag, jlink, minimodule, olimex-arm-usb-ocd, olimex-arm-usb-ocd-h, olimex-arm-usb-tiny-h, olimex-jtag-tiny, tumpa)
+PACKAGES: 
+ - framework-arduinoespressif32 @ 3.20009.0 (2.0.9) 
+ - tool-esptoolpy @ 1.40501.0 (4.5.1) 
+ - tool-openocd @ 3.1200.0 (12.0) 
+ - toolchain-riscv32-esp @ 8.4.0+2021r2-patch5 
+ - toolchain-xtensa-esp32s3 @ 8.4.0+2021r2-patch5
+LDF: Library Dependency Finder -> https://bit.ly/configure-pio-ldf
+LDF Modes: Finder ~ chain, Compatibility ~ soft
+Found 41 compatible libraries
+Scanning dependencies...
+Dependency Graph
+|-- lvgl @ 8.3.11
+|-- SensorLib @ 0.1.8
+|-- TFT_eSPI @ 2.5.43
+|-- FS @ 2.0.0
+|-- SPIFFS @ 2.0.0
+|-- ArduinoJson @ 6.21.6
+|-- WiFi @ 2.0.0
+|-- HTTPClient @ 2.0.0
+|-- NTPClient @ 3.2.1
+|-- LilyGo_RGBPanel
+|-- LV_Helper
+|-- ui @ 1.0
+|-- WiFiClientSecure @ 2.0.0
+Building in release mode
+Compiling .pio\build\T-RGB\src\main.cpp.o
+src/main.cpp: In function 'void updateTime(void*)':
+src/main.cpp:174:13: error: jump to label 'skip_moon' [-fpermissive]
+             skip_moon:
+             ^~~~~~~~~
+src/main.cpp:153:26: note:   from here
+                     goto skip_moon;
+                          ^~~~~~~~~
+src/main.cpp:161:20: note:   crosses initialization of 'String ampm'
+             String ampm = (hours >= 12) ? "PM" : "AM";
+                    ^~~~
+src/main.cpp:159:17: note:   crosses initialization of 'int seconds'
+             int seconds = timeinfo.tm_sec;
+                 ^~~~~~~
+src/main.cpp:158:17: note:   crosses initialization of 'int minutes'
+             int minutes = timeinfo.tm_min;
+                 ^~~~~~~
+src/main.cpp:157:17: note:   crosses initialization of 'int hours'
+             int hours = timeinfo.tm_hour;
+                 ^~~~~
+*** [.pio\build\T-RGB\src\main.cpp.o] Error 1
+========================== [FAILED] Took 7.84 seconds ==========================

@@ -1,0 +1,194 @@
+
+Please build project in debug configuration to get more details about an exception.
+See https://docs.platformio.org/page/projectconf/build_configurations.html
+
+
+--- Terminal on COM6 | 115200 8-N-1
+--- Available filters and text transformations: colorize, debug, default, direct, esp32_exception_decoder, hexlify, log2file, nocontrol, printable, send_on_enter, time
+--- More details at https://bit.ly/pio-monitor-filters
+--- Quit: Ctrl+C | Menu: Ctrl+T | Help: Ctrl+T followed by Ctrl+H
+20:41:19.946 > External GPIO expansion chip does not exist.
+20:41:19.946 > assert failed: bool LilyGo_RGBPanel::begin(LilyGo_RGBPanel_Color_Order) LilyGo_RGBPanel.cpp:56 (false)
+20:41:19.946 > 
+20:41:19.946 > 
+20:41:19.946 > Backtrace: 0x40377e1a:0x3fcebd30 0x4037d9f9:0x3fcebd50 0x403843dd:0x3fcebd70 0x42004a53:0x3fcebea0 0x42002b48:0x3fcebec0 0x420382ba:0x3fcebef0
+20:41:19.946 > 
+20:41:19.946 >   #0  0x40377e1a:0x3fcebd30 in panic_abort at /Users/ficeto/Desktop/ESP32/ESP32S2/esp-idf-public/components/esp_system/panic.c:408
+20:41:19.946 >   #1  0x4037d9f9:0x3fcebd50 in esp_system_abort at /Users/ficeto/Desktop/ESP32/ESP32S2/esp-idf-public/components/esp_system/esp_system.c:137
+20:41:19.946 >   #2  0x403843dd:0x3fcebd70 in __assert_func at /Users/ficeto/Desktop/ESP32/ESP32S2/esp-idf-public/components/newlib/assert.c:85
+20:41:19.946 >   #3  0x42004a53:0x3fcebea0 in LilyGo_RGBPanel::begin(LilyGo_RGBPanel_Color_Order) at lib/LilyGo_RGBPanel/LilyGo_RGBPanel.cpp:56
+20:41:19.946 >   #4  0x42002b48:0x3fcebec0 in setup() at src/main.cpp:70
+20:41:19.946 >   #5  0x420382ba:0x3fcebef0 in loopTask(void*) at C:/Users/ed/.platformio/packages/framework-arduinoespressif32@3.20009.0/cores/esp32/main.cpp:42
+20:41:19.946 > 
+20:41:19.946 > 
+20:41:19.946 > 
+20:41:19.946 > 
+20:41:19.946 > ELF file SHA256: fb18f692b9d40faa
+20:41:19.946 > 
+20:41:19.946 > Rebooting...
+20:41:19.946 > ESP-ROM:esp32s3-20210327
+20:41:19.946 > Build:Mar 27 2021
+20:41:19.946 > rst:0xc (RTC_SW_CPU_RST),boot:0xb (SPI_FAST_FLASH_BOOT)
+20:41:19.946 > Saved PC:0x420ca08e
+20:41:19.946 > SPIWP:0xee
+20:41:19.946 > mode:DIO, clock div:1
+20:41:19.946 > load:0x3fce3808,len:0x44c
+20:41:19.946 > load:0x403c9700,len:0xbe4
+20:41:19.946 > load:0x403cc700,len:0x2a38
+20:41:19.946 > entry 0x403c98d4
+20:41:20.778 > Starting T-RGB Boot...
+20:41:20.827 > Connecting to WiFi....Connected to WiFi
+20:41:22.828 > External GPIO expansion chip does not exist.
+20:41:23.322 > assert failed: bool LilyGo_RGBPanel::begin(LilyGo_RGBPanel_Color_Order) LilyGo_RGBPanel.cpp:56 (false)
+20:41:23.322 > 
+20:41:23.322 > 
+20:41:23.322 > Backtrace: 0x40377e1a:0x3fcebd30 0x4037d9f9:0x3fcebd50 0x403843dd:0x3fcebd70 0x42004a53:0x3fcebea0 0x42002b48:0x3fcebec0 0x420382ba:0x3fcebef0
+20:41:23.322 > 
+20:41:23.322 >   #0  0x40377e1a:0x3fcebd30 in panic_abort at /Users/ficeto/Desktop/ESP32/ESP32S2/esp-idf-public/components/esp_system/panic.c:408
+20:41:23.322 >   #1  0x4037d9f9:0x3fcebd50 in esp_system_abort at /Users/ficeto/Desktop/ESP32/ESP32S2/esp-idf-public/components/esp_system/esp_system.c:137
+20:41:23.322 >   #2  0x403843dd:0x3fcebd70 in __assert_func at /Users/ficeto/Desktop/ESP32/ESP32S2/esp-idf-public/components/newlib/assert.c:85
+20:41:23.322 >   #3  0x42004a53:0x3fcebea0 in LilyGo_RGBPanel::begin(LilyGo_RGBPanel_Color_Order) at lib/LilyGo_RGBPanel/LilyGo_RGBPanel.cpp:56
+20:41:23.322 >   #4  0x42002b48:0x3fcebec0 in setup() at src/main.cpp:70
+20:41:23.322 >   #5  0x420382ba:0x3fcebef0 in loopTask(void*) at C:/Users/ed/.platformio/packages/framework-arduinoespressif32@3.20009.0/cores/esp32/main.cpp:42
+20:41:23.322 > 
+20:41:23.322 > 
+20:41:23.322 > 
+20:41:23.322 > 
+20:41:23.322 > ELF file SHA256: fb18f692b9d40faa
+20:41:23.322 > 
+20:41:23.322 > Rebooting...
+20:41:23.322 > ESP-ROM:esp32s3-20210327
+20:41:23.322 > Build:Mar 27 2021
+20:41:23.322 > rst:0xc (RTC_SW_CPU_RST),boot:0xb (SPI_FAST_FLASH_BOOT)
+20:41:23.322 > Saved PC:0x420ca08e
+20:41:23.322 > SPIWP:0xee
+20:41:23.322 > mode:DIO, clock div:1
+20:41:23.322 > load:0x3fce3808,len:0x44c
+20:41:23.322 > load:0x403c9700,len:0xbe4
+20:41:23.322 > load:0x403cc700,len:0x2a38
+20:41:23.322 > entry 0x403c98d4
+20:41:25.998 > Starting T-RGB Boot...
+20:41:26.047 > Connecting to WiFi....Connected to WiFi
+20:41:28.048 > External GPIO expansion chip does not exist.
+20:41:28.366 > 
+20:41:28.555 > assert failed: bool LilyGo_RGBPanel::begin(LilyGo_RGBPanel_Color_Order) LilyGo_RGBPanel.cpp:56 (false)
+20:41:28.555 > 
+20:41:28.555 > 
+20:41:28.555 > Backtrace: 0x40377e1a:0x3fcebd30 0x4037d9f9:0x3fcebd50 0x403843dd:0x3fcebd70 0x42004a53:0x3fcebea0 0x42002b48:0x3fcebec0 0x420382ba:0x3fcebef0
+20:41:28.555 > 
+20:41:28.555 >   #0  0x40377e1a:0x3fcebd30 in panic_abort at /Users/ficeto/Desktop/ESP32/ESP32S2/esp-idf-public/components/esp_system/panic.c:408
+20:41:28.555 >   #1  0x4037d9f9:0x3fcebd50 in esp_system_abort at /Users/ficeto/Desktop/ESP32/ESP32S2/esp-idf-public/components/esp_system/esp_system.c:137
+20:41:28.555 >   #2  0x403843dd:0x3fcebd70 in __assert_func at /Users/ficeto/Desktop/ESP32/ESP32S2/esp-idf-public/components/newlib/assert.c:85
+20:41:28.555 >   #3  0x42004a53:0x3fcebea0 in LilyGo_RGBPanel::begin(LilyGo_RGBPanel_Color_Order) at lib/LilyGo_RGBPanel/LilyGo_RGBPanel.cpp:56
+20:41:28.555 >   #4  0x42002b48:0x3fcebec0 in setup() at src/main.cpp:70
+20:41:28.555 >   #5  0x420382ba:0x3fcebef0 in loopTask(void*) at C:/Users/ed/.platformio/packages/framework-arduinoespressif32@3.20009.0/cores/esp32/main.cpp:42
+20:41:28.555 > 
+20:41:28.555 > 
+20:41:28.555 > 
+20:41:28.555 > 
+20:41:28.555 > ELF file SHA256: fb18f692b9d40faa
+20:41:28.555 > 
+20:41:28.555 > Rebooting...
+20:41:28.555 > ESP-ROM:esp32s3-20210327
+20:41:28.555 > Build:Mar 27 2021
+20:41:28.555 > rst:0xc (RTC_SW_CPU_RST),boot:0xb (SPI_FAST_FLASH_BOOT)
+20:41:28.555 > Saved PC:0x420ca08e
+20:41:28.555 > SPIWP:0xee
+20:41:28.555 > mode:DIO, clock div:1
+20:41:28.555 > load:0x3fce3808,len:0x44c
+20:41:28.555 > load:0x403c9700,len:0xbe4
+20:41:28.555 > load:0x403cc700,len:0x2a38
+20:41:28.555 > entry 0x403c98d4
+20:41:31.226 > Starting T-RGB Boot...
+20:41:31.276 > Connecting to WiFi....Connected to WiFi
+20:41:33.276 > External GPIO expansion chip does not exist.
+20:41:33.772 > assert failed: bool LilyGo_RGBPanel::begin(LilyGo_RGBPanel_Color_Order) LilyGo_RGBPanel.cpp:56 (false)
+20:41:33.772 > 
+20:41:33.772 > 
+20:41:33.772 > Backtrace: 0x40377e1a:0x3fcebd30 0x4037d9f9:0x3fcebd50 0x403843dd:0x3fcebd70 0x42004a53:0x3fcebea0 0x42002b48:0x3fcebec0 0x420382ba:0x3fcebef0
+20:41:33.772 > 
+20:41:33.772 >   #0  0x40377e1a:0x3fcebd30 in panic_abort at /Users/ficeto/Desktop/ESP32/ESP32S2/esp-idf-public/components/esp_system/panic.c:408
+20:41:33.772 >   #1  0x4037d9f9:0x3fcebd50 in esp_system_abort at /Users/ficeto/Desktop/ESP32/ESP32S2/esp-idf-public/components/esp_system/esp_system.c:137
+20:41:33.772 >   #2  0x403843dd:0x3fcebd70 in __assert_func at /Users/ficeto/Desktop/ESP32/ESP32S2/esp-idf-public/components/newlib/assert.c:85
+20:41:33.772 >   #3  0x42004a53:0x3fcebea0 in LilyGo_RGBPanel::begin(LilyGo_RGBPanel_Color_Order) at lib/LilyGo_RGBPanel/LilyGo_RGBPanel.cpp:56
+20:41:33.772 >   #4  0x42002b48:0x3fcebec0 in setup() at src/main.cpp:70
+20:41:33.772 >   #5  0x420382ba:0x3fcebef0 in loopTask(void*) at C:/Users/ed/.platformio/packages/framework-arduinoespressif32@3.20009.0/cores/esp32/main.cpp:42
+20:41:33.772 > 
+20:41:33.772 > 
+20:41:33.772 > 
+20:41:33.772 > 
+20:41:33.772 > ELF file SHA256: fb18f692b9d40faa
+20:41:33.772 > 
+20:41:33.772 > Rebooting...
+20:41:33.772 > ESP-ROM:esp32s3-20210327
+20:41:33.772 > Build:Mar 27 2021
+20:41:33.772 > rst:0xc (RTC_SW_CPU_RST),boot:0xb (SPI_FAST_FLASH_BOOT)
+20:41:33.772 > Saved PC:0x420ca08e
+20:41:33.772 > SPIWP:0xee
+20:41:33.772 > mode:DIO, clock div:1
+20:41:33.772 > load:0x3fce3808,len:0x44c
+20:41:33.772 > load:0x403c9700,len:0xbe4
+20:41:33.772 > load:0x403cc700,len:0x2a38
+20:41:33.772 > entry 0x403c98d4
+20:41:36.444 > Starting T-RGB Boot...
+20:41:36.494 > Connecting to WiFi....Connected to WiFi
+20:41:38.494 > External GPIO expansion chip does not exist.
+20:41:38.998 > assert failed: bool LilyGo_RGBPanel::begin(LilyGo_RGBPanel_Color_Order) LilyGo_RGBPanel.cpp:56 (false)
+20:41:38.998 > 
+20:41:38.998 > 
+20:41:38.998 > Backtrace: 0x40377e1a:0x3fcebd30 0x4037d9f9:0x3fcebd50 0x403843dd:0x3fcebd70 0x42004a53:0x3fcebea0 0x42002b48:0x3fcebec0 0x420382ba:0x3fcebef0
+20:41:38.998 > 
+20:41:38.998 >   #0  0x40377e1a:0x3fcebd30 in panic_abort at /Users/ficeto/Desktop/ESP32/ESP32S2/esp-idf-public/components/esp_system/panic.c:408
+20:41:38.998 >   #1  0x4037d9f9:0x3fcebd50 in esp_system_abort at /Users/ficeto/Desktop/ESP32/ESP32S2/esp-idf-public/components/esp_system/esp_system.c:137
+20:41:38.998 >   #2  0x403843dd:0x3fcebd70 in __assert_func at /Users/ficeto/Desktop/ESP32/ESP32S2/esp-idf-public/components/newlib/assert.c:85
+20:41:38.998 >   #3  0x42004a53:0x3fcebea0 in LilyGo_RGBPanel::begin(LilyGo_RGBPanel_Color_Order) at lib/LilyGo_RGBPanel/LilyGo_RGBPanel.cpp:56
+20:41:38.998 >   #4  0x42002b48:0x3fcebec0 in setup() at src/main.cpp:70
+20:41:38.998 >   #5  0x420382ba:0x3fcebef0 in loopTask(void*) at C:/Users/ed/.platformio/packages/framework-arduinoespressif32@3.20009.0/cores/esp32/main.cpp:42
+20:41:38.998 > 
+20:41:38.998 > 
+20:41:38.998 > 
+20:41:38.998 > 
+20:41:38.998 > ELF file SHA256: fb18f692b9d40faa
+20:41:38.998 > 
+20:41:38.998 > Rebooting...
+20:41:38.998 > ESP-ROM:esp32s3-20210327
+20:41:38.998 > Build:Mar 27 2021
+20:41:38.998 > rst:0xc (RTC_SW_CPU_RST),boot:0xb (SPI_FAST_FLASH_BOOT)
+20:41:38.998 > Saved PC:0x420ca08e
+20:41:38.998 > SPIWP:0xee
+20:41:38.998 > mode:DIO, clock div:1
+20:41:38.998 > load:0x3fce3808,len:0x44c
+20:41:38.998 > load:0x403c9700,len:0xbe4
+20:41:38.998 > load:0x403cc700,len:0x2a38
+20:41:38.998 > entry 0x403c98d4
+20:41:41.670 > Starting T-RGB Boot...
+20:41:41.719 > Connecting to WiFi....Connected to WiFi
+20:41:43.719 > External GPIO expansion chip does not exist.
+20:41:44.220 > assert failed: bool LilyGo_RGBPanel::begin(LilyGo_RGBPanel_Color_Order) LilyGo_RGBPanel.cpp:56 (false)
+20:41:44.220 > 
+20:41:44.220 > 
+20:41:44.220 > Backtrace: 0x40377e1a:0x3fcebd30 0x4037d9f9:0x3fcebd50 0x403843dd:0x3fcebd70 0x42004a53:0x3fcebea0 0x42002b48:0x3fcebec0 0x420382ba:0x3fcebef0
+20:41:44.220 > 
+20:41:44.220 >   #0  0x40377e1a:0x3fcebd30 in panic_abort at /Users/ficeto/Desktop/ESP32/ESP32S2/esp-idf-public/components/esp_system/panic.c:408
+20:41:44.220 >   #1  0x4037d9f9:0x3fcebd50 in esp_system_abort at /Users/ficeto/Desktop/ESP32/ESP32S2/esp-idf-public/components/esp_system/esp_system.c:137
+20:41:44.220 >   #2  0x403843dd:0x3fcebd70 in __assert_func at /Users/ficeto/Desktop/ESP32/ESP32S2/esp-idf-public/components/newlib/assert.c:85
+20:41:44.220 >   #3  0x42004a53:0x3fcebea0 in LilyGo_RGBPanel::begin(LilyGo_RGBPanel_Color_Order) at lib/LilyGo_RGBPanel/LilyGo_RGBPanel.cpp:56
+20:41:44.220 >   #4  0x42002b48:0x3fcebec0 in setup() at src/main.cpp:70
+20:41:44.220 >   #5  0x420382ba:0x3fcebef0 in loopTask(void*) at C:/Users/ed/.platformio/packages/framework-arduinoespressif32@3.20009.0/cores/esp32/main.cpp:42
+20:41:44.220 > 
+20:41:44.220 > 
+20:41:44.220 > 
+20:41:44.220 > 
+20:41:44.220 > ELF file SHA256: fb18f692b9d40faa
+20:41:44.220 > 
+20:41:44.220 > Rebooting...
+20:41:44.220 > ESP-ROM:esp32s3-20210327
+20:41:44.220 > Build:Mar 27 2021
+20:41:44.220 > rst:0xc (RTC_SW_CPU_RST),boot:0xb (SPI_FAST_FLASH_BOOT)
+20:41:44.220 > Saved PC:0x420ca08e
+20:41:44.220 > SPIWP:0xee
+20:41:44.220 > mode:DIO, clock div:1
+20:41:44.220 > load:0x3fce3808,len:0x44c
+20:41:44.220 > load:0x403c9700,len:0xbe4
+20:41:44.220 > load:0x403cc700,len:0x2a38
+20:41:44.220 > entry 0x403c98d4
