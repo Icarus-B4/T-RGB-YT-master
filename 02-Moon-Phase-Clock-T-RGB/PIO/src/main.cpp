@@ -36,6 +36,8 @@ void syncMoonData(void * parameter);
 void updateUILabels(String formattedTime, String ampm, String formattedDate);
 void updateMoonData();
 void wakeup();
+void recoverVoiceModule();
+
 
 extern const lv_img_dsc_t *ui_imgset_moon_[30];
 
@@ -259,7 +261,31 @@ void loop()
         }
     }
 
+    // Voice module health check (every 60 seconds)
+    static unsigned long lastVoiceCheck = 0;
+    if (millis() - lastVoiceCheck > 60000) {
+        lastVoiceCheck = millis();
+        uint8_t currWake = asr.getWakeTime();
+        if (currWake != 18) {
+            Serial.printf("[VOICE] Health check failed (Received %d, expected 18)...\n", currWake);
+            recoverVoiceModule();
+        }
+    }
+
     delay(20);
+}
+
+void recoverVoiceModule() {
+    Serial.println("[VOICE] Resetting module and I2C connection...");
+    // Wire.begin() is called inside asr.begin() for this library
+    if (asr.begin()) {
+        asr.setVolume(10);
+        asr.setMuteMode(0);
+        asr.setWakeTime(18);
+        Serial.println("[VOICE] Recovery successful!");
+    } else {
+        Serial.println("[VOICE] CRITICAL: Voice module unresponsive on I2C bus.");
+    }
 }
 
 void connectToWiFi() {

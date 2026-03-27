@@ -60,7 +60,7 @@ void updateBattery(unsigned long currentMillis) {
         if (autoCharging || manualCharging) {
             // While charging, voltage is artificially HIGH. Subtract offset to guess real state.
             // Offset estimated based on user report of huge jumps (48% -> 100%).
-            v_corr = v - 0.90; 
+            v_corr = v - 0.80; 
         } else {
             // While discharging under load, voltage is LOW. Add offset to match resting state.
             v_corr = v + 0.07; 
@@ -68,8 +68,8 @@ void updateBattery(unsigned long currentMillis) {
         
         // Realistic percentage mapping
         int32_t percentage;
-        if (v_corr >= 4.15) percentage = 100; // Lowered from 4.2V to account for load drop
-        else if (v_corr >= 4.0) percentage = 80 + (v_corr - 4.0) * 133; // Smoother top range
+        if (v_corr >= 4.15) percentage = 100;
+        else if (v_corr >= 4.0) percentage = 80 + (v_corr - 4.0) * 133; 
         else if (v_corr >= 3.7) percentage = 40 + (v_corr - 3.7) * 133;
         else if (v_corr >= 3.5) percentage = 10 + (v_corr - 3.5) * 150;
         else percentage = (v_corr - 3.3) * 50;
@@ -125,10 +125,10 @@ void updateBattery(unsigned long currentMillis) {
             } else {
                 // Static Battery Icon based on percentage
                 const char * icon;
-                if (percentage > 100) icon = LV_SYMBOL_BATTERY_FULL;
-                else if (percentage > 80) icon = LV_SYMBOL_BATTERY_3;
-                else if (percentage > 55) icon = LV_SYMBOL_BATTERY_2;
-                else if (percentage > 30) icon = LV_SYMBOL_BATTERY_1;
+                if (percentage >= 100) icon = LV_SYMBOL_BATTERY_FULL;
+                else if (percentage >= 75) icon = LV_SYMBOL_BATTERY_3;
+                else if (percentage >= 50) icon = LV_SYMBOL_BATTERY_2;
+                else if (percentage >= 25) icon = LV_SYMBOL_BATTERY_1;
                 else icon = LV_SYMBOL_BATTERY_EMPTY;
 
                 lv_label_set_text(ui_Label_BatteryIcon, icon);

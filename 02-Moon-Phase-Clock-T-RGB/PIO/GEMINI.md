@@ -2,7 +2,7 @@
 
 ## Persönliche Präferenzen & Kontext
 - **Nutzer:** Ich bin Ed.
-- **Sprache:** Code-Kommentare, Dokumentationen und Debug-Ausgaben bevorzugt in **Deutsch** halten.
+- **Sprache:** Code-Kommentare, Dokumentationen, Walktrough, Implemetation Plan und Debug-Ausgaben bevorzugt in **Deutsch** halten.
 - **Interessen:** Vielseitiger Entwickler mit Fokus auf:
   - **Python:** Automatisierung, KI-Integration, Datenverarbeitung.
   - **Webdesign:** Moderne UIs (HTML/JS), Ästhetik & User Experience.
@@ -17,7 +17,7 @@
 ## Programmier-Richtlinien
 - **Framework:** Arduino mit PlatformIO.
 - **UI:** LVGL (Version 8.x), oft generiert via SquareLine Studio (SLS).
-- **Sprache:** Code-Kommentare und Debug-Ausgaben bevorzugt in Deutsch halten.
+- **Sprache:** Code-Kommentare, Walktrough, Implemetation Plan und Debug-Ausgaben bevorzugt in **Deutsch** halten.
 - **Stil:** 
   - Nutze `lv_obj_add_flag(obj, LV_OBJ_FLAG_HIDDEN)` zum Verbergen von Elementen im Standby.
   - Verwende `Serial.printf()` für Debugging.
