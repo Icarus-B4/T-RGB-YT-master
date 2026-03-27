@@ -40,8 +40,20 @@ void wakeup();
 extern const lv_img_dsc_t *ui_imgset_moon_[30];
 
 enum AppState { STATE_CLOCK, STATE_POMODORO, STATE_BREAK };
+lv_obj_t * ui_Arc_Battery;
+lv_obj_t * ui_Label_BatteryIcon;
+lv_obj_t * ui_Label_StandbyIcon;
+lv_obj_t * ui_Label_StandbyPerc;
+bool manualCharging = false;
+bool isStandby = false;
+
 AppState currentAppState = STATE_CLOCK;
 int32_t pomodoroSeconds = 0;
+void wakeup_event_cb(lv_event_t * e) {
+    if (isStandby) {
+        isStandby = false;
+    }
+}
 
 void pomodoro_event_cb(lv_event_t * e) {
     if (currentAppState == STATE_CLOCK) {
@@ -55,11 +67,6 @@ void pomodoro_event_cb(lv_event_t * e) {
     }
 }
 
-lv_obj_t * ui_Arc_Battery;
-lv_obj_t * ui_Label_BatteryIcon;
-bool manualCharging = false;
-bool isStandby = false;
-
 void setup(void)
 {
     Serial.begin(115200); 
@@ -69,12 +76,18 @@ void setup(void)
     connectToWiFi();
     configTzTime(timeZone, ntpServer);
 
-    if (!panel.begin()) {
-        while (1) {
-            Serial.println("Error, failed to initialize T-RGB Panel (XL9555)");
-            delay(1000);
+    int retryPanel = 0;
+    while (!panel.begin()) {
+        retryPanel++;
+        Serial.printf("[BOOT] Error, failed to initialize T-RGB Panel (XL9555) - Attempt %d\n", retryPanel);
+        if (retryPanel > 5) {
+            Serial.println("[BOOT] CRITICAL: Panel initialization failed after 5 attempts. Rebooting...");
+            delay(5000);
+            ESP.restart();
         }
+        delay(1000);
     }
+    Serial.println("[BOOT] Panel initialized successfully!");
     
     beginLvglHelper(panel);
     ui_init();
@@ -111,11 +124,30 @@ void setup(void)
     lv_obj_set_style_text_font(ui_Label_BatteryIcon, &lv_font_montserrat_20, LV_PART_MAIN); 
     lv_obj_add_flag(ui_Label_BatteryIcon, LV_OBJ_FLAG_HIDDEN);
 
+    // Standby Battery UI
+    ui_Label_StandbyIcon = lv_label_create(ui_Screen1);
+    lv_obj_set_align(ui_Label_StandbyIcon, LV_ALIGN_CENTER);
+    lv_obj_set_y(ui_Label_StandbyIcon, -30);
+    lv_label_set_text(ui_Label_StandbyIcon, LV_SYMBOL_BATTERY_FULL);
+    lv_obj_set_style_text_font(ui_Label_StandbyIcon, &lv_font_montserrat_48, LV_PART_MAIN); 
+    lv_obj_add_flag(ui_Label_StandbyIcon, LV_OBJ_FLAG_HIDDEN);
+
+    ui_Label_StandbyPerc = lv_label_create(ui_Screen1);
+    lv_obj_set_align(ui_Label_StandbyPerc, LV_ALIGN_CENTER);
+    lv_obj_set_y(ui_Label_StandbyPerc, 50);
+    lv_label_set_text(ui_Label_StandbyPerc, "100%");
+    lv_obj_set_style_text_font(ui_Label_StandbyPerc, &lv_font_montserrat_48, LV_PART_MAIN); 
+    lv_obj_add_flag(ui_Label_StandbyPerc, LV_OBJ_FLAG_HIDDEN);
+
     lv_task_handler();
     panel.setBrightness(128);
+    panel.enableTouchWakeup(); // Allow touch to wake from Deep Sleep
 
     lv_obj_add_flag(ui_Label_time, LV_OBJ_FLAG_CLICKABLE);
     lv_obj_add_event_cb(ui_Label_time, pomodoro_event_cb, LV_EVENT_CLICKED, NULL);
+    
+    lv_obj_add_flag(ui_Screen1, LV_OBJ_FLAG_CLICKABLE);
+    lv_obj_add_event_cb(ui_Screen1, wakeup_event_cb, LV_EVENT_CLICKED, NULL);
 
     mutex = xSemaphoreCreateMutex();
     xTaskCreate(updateTime, "UpdateTime", 8192, NULL, 1, &updateTimeTaskHandle);
@@ -157,15 +189,73 @@ void loop()
         } else if (CMDID == 104) { // "Turn off the Light" -> Standby
             if (!isStandby) {
                 isStandby = true;
-                panel.setBrightness(0);
                 Serial.println("STANDBY: ON via Voice (104)");
             }
         } else if (CMDID == 103) { // "Turn on the Light" -> Wakeup
             if (isStandby) {
                 isStandby = false;
-                panel.setBrightness(128); // Default brightness
                 Serial.println("STANDBY: OFF via Voice (103)");
             }
+        }
+    }
+
+    // Check BOT button (GPIO 0) for Deep Sleep / Reset
+    static unsigned long btnPressStart = 0;
+    if (digitalRead(0) == LOW) {
+        if (btnPressStart == 0) btnPressStart = millis();
+        // Long press (> 2 seconds) triggers Deep Sleep
+        if (millis() - btnPressStart > 2000) {
+            Serial.println("[POWER] Button Long Press -> Entering DEEP SLEEP");
+            panel.sleep(); // Starts Deep Sleep
+        }
+    } else {
+        btnPressStart = 0;
+    }
+
+    static bool lastStandbyState = false;
+    if (isStandby != lastStandbyState) {
+        if (isStandby) {
+            Serial.println("[POWER] Entering STANDBY (Visible Mode)...");
+            panel.setBrightness(5); // Very dim for standby
+            
+            // Hide standard UI
+            if (lv_obj_is_valid(ui_Img_bg)) lv_obj_add_flag(ui_Img_bg, LV_OBJ_FLAG_HIDDEN);
+            if (lv_obj_is_valid(ui_Container_time)) lv_obj_add_flag(ui_Container_time, LV_OBJ_FLAG_HIDDEN);
+            if (lv_obj_is_valid(ui_Panel1)) lv_obj_add_flag(ui_Panel1, LV_OBJ_FLAG_HIDDEN);
+            if (lv_obj_is_valid(ui_Label_date)) lv_obj_add_flag(ui_Label_date, LV_OBJ_FLAG_HIDDEN);
+            if (lv_obj_is_valid(ui_Img_earth)) lv_obj_add_flag(ui_Img_earth, LV_OBJ_FLAG_HIDDEN);
+            if (lv_obj_is_valid(ui_Img_moon)) lv_obj_add_flag(ui_Img_moon, LV_OBJ_FLAG_HIDDEN);
+            if (lv_obj_is_valid(ui_Label_phase)) lv_obj_add_flag(ui_Label_phase, LV_OBJ_FLAG_HIDDEN);
+            
+            // Show standby UI
+            lv_obj_clear_flag(ui_Label_StandbyIcon, LV_OBJ_FLAG_HIDDEN);
+            lv_obj_clear_flag(ui_Label_StandbyPerc, LV_OBJ_FLAG_HIDDEN);
+        } else {
+            Serial.println("[POWER] Woke up from STANDBY");
+            panel.setBrightness(160); // Restore brightness
+            
+            // Show standard UI
+            if (lv_obj_is_valid(ui_Img_bg)) lv_obj_clear_flag(ui_Img_bg, LV_OBJ_FLAG_HIDDEN);
+            if (lv_obj_is_valid(ui_Container_time)) lv_obj_clear_flag(ui_Container_time, LV_OBJ_FLAG_HIDDEN);
+            if (lv_obj_is_valid(ui_Panel1)) lv_obj_clear_flag(ui_Panel1, LV_OBJ_FLAG_HIDDEN);
+            if (lv_obj_is_valid(ui_Label_date)) lv_obj_clear_flag(ui_Label_date, LV_OBJ_FLAG_HIDDEN);
+            if (lv_obj_is_valid(ui_Img_earth)) lv_obj_clear_flag(ui_Img_earth, LV_OBJ_FLAG_HIDDEN);
+            if (lv_obj_is_valid(ui_Img_moon)) lv_obj_clear_flag(ui_Img_moon, LV_OBJ_FLAG_HIDDEN);
+            if (lv_obj_is_valid(ui_Label_phase)) lv_obj_clear_flag(ui_Label_phase, LV_OBJ_FLAG_HIDDEN);
+            if (lv_obj_is_valid(ui_Label_BatteryIcon)) lv_obj_clear_flag(ui_Label_BatteryIcon, LV_OBJ_FLAG_HIDDEN);
+            if (lv_obj_is_valid(ui_Arc_Battery)) lv_obj_clear_flag(ui_Arc_Battery, LV_OBJ_FLAG_HIDDEN);
+            
+            // Hide standby UI
+            lv_obj_add_flag(ui_Label_StandbyIcon, LV_OBJ_FLAG_HIDDEN);
+            lv_obj_add_flag(ui_Label_StandbyPerc, LV_OBJ_FLAG_HIDDEN);
+        }
+        lastStandbyState = isStandby;
+    }
+
+    if (isStandby) {
+        // Check for wakeup (Bot button restores)
+        if (digitalRead(0) == LOW) {
+            isStandby = false;
         }
     }
 
@@ -242,7 +332,7 @@ void updateTime(void * parameter) {
                 }
             }
 
-            if (showClock) {
+            if (showClock && !isStandby) {
                 int hours = timeinfo.tm_hour;
                 int minutes = timeinfo.tm_min;
                 int seconds = timeinfo.tm_sec;
@@ -276,7 +366,7 @@ void updateUILabels(String formattedTime, String ampm, String formattedDate) {
 }
 
 void updateMoonData() {
-    if (WiFi.status() != WL_CONNECTED) return;
+    if (WiFi.status() != WL_CONNECTED || isStandby) return;
 
     MoonData data;
     if (fetchMoonData(data)) {
@@ -297,6 +387,6 @@ void updateMoonData() {
 void syncMoonData(void * parameter) {
     for (;;) {
         updateMoonData();
-        vTaskDelay(60000 / portTICK_PERIOD_MS); // Update every minute
+        vTaskDelay(600000 / portTICK_PERIOD_MS); // Update every 10 minutes
     }
 }

@@ -6,6 +6,8 @@ extern LilyGo_RGBPanel panel;
 extern SemaphoreHandle_t mutex;
 extern lv_obj_t * ui_Arc_Battery;
 extern lv_obj_t * ui_Label_BatteryIcon;
+extern lv_obj_t * ui_Label_StandbyIcon;
+extern lv_obj_t * ui_Label_StandbyPerc;
 extern bool manualCharging;
 extern bool isStandby;
 
@@ -54,13 +56,20 @@ void updateBattery(unsigned long currentMillis) {
             first_run = false;
         }
 
-        // Calibration Offset (+0.07V) for UI percentage display only
-        float v_corr = v + 0.07; 
+        float v_corr;
+        if (autoCharging || manualCharging) {
+            // While charging, voltage is artificially HIGH. Subtract offset to guess real state.
+            // Offset estimated based on user report of huge jumps (48% -> 100%).
+            v_corr = v - 0.90; 
+        } else {
+            // While discharging under load, voltage is LOW. Add offset to match resting state.
+            v_corr = v + 0.07; 
+        }
         
         // Realistic percentage mapping
         int32_t percentage;
-        if (v_corr >= 4.2) percentage = 100;
-        else if (v_corr >= 4.0) percentage = 80 + (v_corr - 4.0) * 100;
+        if (v_corr >= 4.15) percentage = 100; // Lowered from 4.2V to account for load drop
+        else if (v_corr >= 4.0) percentage = 80 + (v_corr - 4.0) * 133; // Smoother top range
         else if (v_corr >= 3.7) percentage = 40 + (v_corr - 3.7) * 133;
         else if (v_corr >= 3.5) percentage = 10 + (v_corr - 3.5) * 150;
         else percentage = (v_corr - 3.3) * 50;
@@ -68,12 +77,19 @@ void updateBattery(unsigned long currentMillis) {
         if (percentage < 0) percentage = 0;
         if (percentage > 100) percentage = 100;
 
+        // Smooth percentage transitions
+        static float smoothed_perc = -1;
+        if (smoothed_perc < 0) smoothed_perc = percentage;
+        // Slow smoothing (0.5% per 200ms -> ~2.5% per second max)
+        smoothed_perc = (smoothed_perc * 0.95f) + (percentage * 0.05f);
+        int32_t display_perc = (int32_t)(smoothed_perc + 0.5f);
+
         // DEBUG: Print to Serial Monitor
         static unsigned long last_print = 0;
         if (currentMillis - last_print >= 5000) {
             last_print = currentMillis;
-            Serial.printf("[BATT] Raw: %dmV, Corr: %.2fV, Perc: %d%%, Chg: %s\n", 
-                          raw_volt, v_corr, percentage, autoCharging ? "YES" : "NO");
+            Serial.printf("[BATT] Raw: %dmV, Corr: %.2fV, Perc: %d%%, Smooth: %d%%, Chg: %s\n", 
+                          raw_volt, v_corr, percentage, display_perc, autoCharging ? "YES" : "NO");
         }
 
         // 🔥 ROBUST TREND-BASED LOGIC
@@ -101,17 +117,37 @@ void updateBattery(unsigned long currentMillis) {
                 // Charging Icon (Blue Lightning/Symbol)
                 lv_label_set_text(ui_Label_BatteryIcon, LV_SYMBOL_CHARGE);
                 lv_obj_set_style_text_color(ui_Label_BatteryIcon, lv_color_hex(0x00A0FF), LV_PART_MAIN);
+                
+                if (isStandby) {
+                    lv_label_set_text(ui_Label_StandbyIcon, LV_SYMBOL_CHARGE);
+                    lv_obj_set_style_text_color(ui_Label_StandbyIcon, lv_color_hex(0x00A0FF), LV_PART_MAIN);
+                }
             } else {
                 // Static Battery Icon based on percentage
-                if (percentage > 80) lv_label_set_text(ui_Label_BatteryIcon, LV_SYMBOL_BATTERY_FULL);
-                else if (percentage > 55) lv_label_set_text(ui_Label_BatteryIcon, LV_SYMBOL_BATTERY_3);
-                else if (percentage > 30) lv_label_set_text(ui_Label_BatteryIcon, LV_SYMBOL_BATTERY_2);
-                else if (percentage > 10) lv_label_set_text(ui_Label_BatteryIcon, LV_SYMBOL_BATTERY_1);
-                else lv_label_set_text(ui_Label_BatteryIcon, LV_SYMBOL_BATTERY_EMPTY);
+                const char * icon;
+                if (percentage > 100) icon = LV_SYMBOL_BATTERY_FULL;
+                else if (percentage > 80) icon = LV_SYMBOL_BATTERY_3;
+                else if (percentage > 55) icon = LV_SYMBOL_BATTERY_2;
+                else if (percentage > 30) icon = LV_SYMBOL_BATTERY_1;
+                else icon = LV_SYMBOL_BATTERY_EMPTY;
 
+                lv_label_set_text(ui_Label_BatteryIcon, icon);
                 lv_obj_set_style_text_color(ui_Label_BatteryIcon,
-                    percentage > 15 ? lv_color_hex(0x00FF00) : lv_color_hex(0xFF0000),// 15% is red, 16% is green
+                    percentage > 15 ? lv_color_hex(0x00FF00) : lv_color_hex(0xFF0000),
                     LV_PART_MAIN);
+                
+                if (isStandby) {
+                    lv_label_set_text(ui_Label_StandbyIcon, icon);
+                    lv_obj_set_style_text_color(ui_Label_StandbyIcon,
+                        percentage > 15 ? lv_color_hex(0x00FF00) : lv_color_hex(0xFF0000),
+                        LV_PART_MAIN);
+                }
+            }
+
+            if (isStandby) {
+                char buf[16];
+                snprintf(buf, sizeof(buf), "%d%%", display_perc);
+                lv_label_set_text(ui_Label_StandbyPerc, buf);
             }
             xSemaphoreGive(mutex);
         }
