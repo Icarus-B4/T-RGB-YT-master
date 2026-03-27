@@ -86,9 +86,9 @@ void setup(void)
     if (!asr.begin()) {
         Serial.println("Voice recognition module not found!");
     } else {
-        asr.setVolume(7);
+        asr.setVolume(10);
         asr.setMuteMode(0); 
-        asr.setWakeTime(25);
+        asr.setWakeTime(18);
     }
 
     ui_Arc_Battery = lv_arc_create(lv_scr_act());
@@ -154,12 +154,6 @@ void loop()
             currentAppState = STATE_CLOCK;
             pomodoroSeconds = 0;
             lv_obj_set_style_text_color(ui_Label_time, lv_color_hex(0xFFFFFF), LV_PART_MAIN);
-        } else if (CMDID == 8) { // "Laden an"
-            manualCharging = true;
-            Serial.println("Manual Charging: ON via Voice");
-        } else if (CMDID == 9) { // "Laden aus"
-            manualCharging = false;
-            Serial.println("Manual Charging: OFF via Voice");
         } else if (CMDID == 104) { // "Turn off the Light" -> Standby
             if (!isStandby) {
                 isStandby = true;
