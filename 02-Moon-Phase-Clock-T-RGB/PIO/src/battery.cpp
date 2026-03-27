@@ -45,18 +45,27 @@ void updateBattery(unsigned long currentMillis) {
         filtered_volt = (filtered_volt * 0.90f) + (raw_volt * 0.10f);
 
         float v = filtered_volt / 1000.0;
-        int32_t volt = (int32_t)filtered_volt;
-
-        // Realistic percentage mapping
+        
+        // Calibration Offset (+0.07V) to compensate for load and ADC error
+        float v_corr = v + 0.07; 
+        
+        // Realistic percentage mapping based on corrected voltage
         int32_t percentage;
-        if (v >= 4.2) percentage = 100;
-        else if (v >= 4.0) percentage = 80 + (v - 4.0) * 100;
-        else if (v >= 3.7) percentage = 40 + (v - 3.7) * 133;
-        else if (v >= 3.5) percentage = 10 + (v - 3.5) * 150;
-        else percentage = (v - 3.3) * 50;
+        if (v_corr >= 4.2) percentage = 100;
+        else if (v_corr >= 4.0) percentage = 80 + (v_corr - 4.0) * 100;
+        else if (v_corr >= 3.7) percentage = 40 + (v_corr - 3.7) * 133;
+        else if (v_corr >= 3.5) percentage = 10 + (v_corr - 3.5) * 150;
+        else percentage = (v_corr - 3.3) * 50;
         
         if (percentage < 0) percentage = 0;
         if (percentage > 100) percentage = 100;
+
+        // DEBUG: Print to Serial Monitor
+        static unsigned long last_print = 0;
+        if (currentMillis - last_print >= 5000) {
+            last_print = currentMillis;
+            Serial.printf("[BATT] Raw: %dmV, Corr: %.2fV, Perc: %d%%\n", raw_volt, v_corr, percentage);
+        }
 
         // 🔥 ROBUST "PORT-CHECK" LOGIC (Proxy for VBUS)
         float diff = v - last_v;
@@ -90,7 +99,7 @@ void updateBattery(unsigned long currentMillis) {
                 else lv_label_set_text(ui_Label_BatteryIcon, LV_SYMBOL_BATTERY_EMPTY);
 
                 lv_obj_set_style_text_color(ui_Label_BatteryIcon,
-                    percentage > 20 ? lv_color_hex(0x00FF00) : lv_color_hex(0xFF0000),
+                    percentage > 15 ? lv_color_hex(0x00FF00) : lv_color_hex(0xFF0000),// 15% is red, 16% is green
                     LV_PART_MAIN);
             }
             xSemaphoreGive(mutex);

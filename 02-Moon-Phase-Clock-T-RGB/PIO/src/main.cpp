@@ -4,12 +4,10 @@
 #include <ui.h>
 #include <TFT_eSPI.h>
 #include <WiFi.h>
-#include <WiFiClientSecure.h>
-#include <HTTPClient.h>
-#include <ArduinoJson.h>
 #include <time.h>
 #include "DFRobot_DF2301Q.h"
 #include "battery.h"
+#include "moon.h"
 
 
 #include "credential.h"
@@ -37,8 +35,6 @@ void updateTime(void * parameter);
 void syncMoonData(void * parameter);
 void updateUILabels(String formattedTime, String ampm, String formattedDate);
 void updateMoonData();
-String getMoonPhase(double age, double illumination);
-int getMoonImageIndex(double age, double illumination);
 
 extern const lv_img_dsc_t *ui_imgset_moon_[30];
 
@@ -66,7 +62,8 @@ bool isStandby = false;
 void setup(void)
 {
     Serial.begin(115200); 
-    delay(1000);
+    delay(2000); // Give serial some time
+    Serial.println("\n[BOOT] Starting Lilygo T-RGB Moon Clock...");
 
     connectToWiFi();
     configTzTime(timeZone, ntpServer);
@@ -188,8 +185,21 @@ void loop()
 }
 
 void connectToWiFi() {
+    Serial.print("[WiFi] Connecting to: ");
+    Serial.println(ssid);
     WiFi.begin(ssid, password);
-    while (WiFi.status() != WL_CONNECTED) delay(1000);
+    int retryCount = 0;
+    while (WiFi.status() != WL_CONNECTED) {
+        delay(1000);
+        Serial.print(".");
+        retryCount++;
+        if (retryCount > 30) {
+            Serial.println("\n[WiFi] Connection FAILED. Check credentials.");
+            return;
+        }
+    }
+    Serial.print("\n[WiFi] Connected! IP: ");
+    Serial.println(WiFi.localIP());
 }
 
 // ================= BACKGROUND TASK: CLOCK & SYSTEM =================
@@ -280,67 +290,21 @@ void updateUILabels(String formattedTime, String ampm, String formattedDate) {
 void updateMoonData() {
     if (WiFi.status() != WL_CONNECTED) return;
 
-    configTzTime(timeZone, ntpServer);
-    delay(500);
-
-    time_t now;
-    struct tm timeinfo;
-    time(&now);
-    gmtime_r(&now, &timeinfo);
-
-    if (timeinfo.tm_year < (2023 - 1900)) return;
-
-    char dateStr[25];
-    strftime(dateStr, sizeof(dateStr), "%Y-%m-%dT%H:%M", &timeinfo);
-    
-    String url = "https://svs.gsfc.nasa.gov/api/dialamoon/";
-    url += dateStr;
-
-    WiFiClientSecure client;
-    client.setInsecure();
-
-    HTTPClient http;
-    http.begin(client, url);
-    int httpCode = http.GET();
-    
-    if (httpCode == HTTP_CODE_OK) {
-        String payload = http.getString();
-        DynamicJsonDocument doc(2048);
-        deserializeJson(doc, payload);
-        
-        double age = doc["age"].as<double>();
-        double illumination = doc["phase"].as<double>();
-        
+    MoonData data;
+    if (fetchMoonData(data)) {
         if (xSemaphoreTake(mutex, portMAX_DELAY)) {
             if (lv_obj_is_valid(ui_Label_phase)) {
-                String moonPhase = getMoonPhase(age, illumination);
-                lv_label_set_text(ui_Label_phase, moonPhase.c_str());
+                lv_label_set_text(ui_Label_phase, data.phaseName.c_str());
             }
             if (lv_obj_is_valid(ui_Img_moon)) {
-                int imageIndex = getMoonImageIndex(age, illumination);
-                lv_img_set_src(ui_Img_moon, ui_imgset_moon_[imageIndex]);
+                lv_img_set_src(ui_Img_moon, ui_imgset_moon_[data.imageIndex]);
             }
             xSemaphoreGive(mutex);
         }
     }
-    http.end();
 }
 
-String getMoonPhase(double age, double illumination) {
-    bool waxing = (age < 14.76);
-    if (illumination < 2.0) return "Neumond";
-    if (illumination > 98.0) return "Vollmond";
-    if (illumination >= 2.0 && illumination < 48.0) return waxing ? "Zun. Sichel" : "Abn. Sichel";
-    if (illumination >= 48.0 && illumination <= 52.0) return waxing ? "Erstes Viertel" : "Letztes Viertel";
-    if (illumination > 52.0 && illumination <= 98.0) return waxing ? "Zun. Dreiviertel" : "Abn. Dreiviertel";
-    return "Unbekannt";
-}
-
-int getMoonImageIndex(double age, double illumination) {
-    bool waxing = (age < 14.76);
-    double index = waxing ? (illumination / 100.0) * 15.0 : 30.0 - (illumination / 100.0) * 15.0;
-    return (int)(index + 0.5) % 30;
-}
+// Removed helper functions (now in moon.cpp)
 
 void syncMoonData(void * parameter) {
     for (;;) {
