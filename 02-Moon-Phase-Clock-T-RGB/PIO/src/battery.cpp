@@ -46,10 +46,18 @@ void updateBattery(unsigned long currentMillis) {
 
         float v = filtered_volt / 1000.0;
         
-        // Calibration Offset (+0.07V) to compensate for load and ADC error
+        static bool first_run = true;
+        if (first_run) {
+            last_v = v;
+            // Guess charging on boot if voltage is exceptionally high
+            if (v > 4.22) autoCharging = true;
+            first_run = false;
+        }
+
+        // Calibration Offset (+0.07V) for UI percentage display only
         float v_corr = v + 0.07; 
         
-        // Realistic percentage mapping based on corrected voltage
+        // Realistic percentage mapping
         int32_t percentage;
         if (v_corr >= 4.2) percentage = 100;
         else if (v_corr >= 4.0) percentage = 80 + (v_corr - 4.0) * 100;
@@ -64,24 +72,27 @@ void updateBattery(unsigned long currentMillis) {
         static unsigned long last_print = 0;
         if (currentMillis - last_print >= 5000) {
             last_print = currentMillis;
-            Serial.printf("[BATT] Raw: %dmV, Corr: %.2fV, Perc: %d%%\n", raw_volt, v_corr, percentage);
+            Serial.printf("[BATT] Raw: %dmV, Corr: %.2fV, Perc: %d%%, Chg: %s\n", 
+                          raw_volt, v_corr, percentage, autoCharging ? "YES" : "NO");
         }
 
-        // 🔥 ROBUST "PORT-CHECK" LOGIC (Proxy for VBUS)
+        // 🔥 ROBUST TREND-BASED LOGIC
         float diff = v - last_v;
         last_v = v;
 
-        // Detect Plug-In (Voltage Jump or High Threshold)
-        if (diff > 0.008 || v > 4.25) {
+        // Detect Plug-In (Voltage Jump > 12mV)
+        if (diff > 0.012) {
             autoCharging = true;
         } 
-        // Detect Unplug (Voltage Drop or Low Threshold)
-        else if (diff < -0.010 || v < 4.05) {
+        // Detect Unplug (Voltage Drop > 15mV)
+        else if (diff < -0.015) {
             autoCharging = false;
         }
-        // Special case: Battery is Full (4.2V) and plugged in
-        // If voltage stays high and stable near 4.2V, we keep autoCharging TRUE 
-        // to show the charging icon, but the animation loop handles the visual.
+
+        // Always show charging if voltage is above charger threshold
+        if (v > 4.28) {
+            autoCharging = true;
+        }
 
         if (xSemaphoreTake(mutex, portMAX_DELAY)) {
             lv_obj_clear_flag(ui_Label_BatteryIcon, LV_OBJ_FLAG_HIDDEN);

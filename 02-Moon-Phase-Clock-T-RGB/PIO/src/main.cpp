@@ -35,6 +35,7 @@ void updateTime(void * parameter);
 void syncMoonData(void * parameter);
 void updateUILabels(String formattedTime, String ampm, String formattedDate);
 void updateMoonData();
+void wakeup();
 
 extern const lv_img_dsc_t *ui_imgset_moon_[30];
 
@@ -133,50 +134,43 @@ void loop()
         if (c == 'c') manualCharging = !manualCharging;
     }
 
-    // Check for voice commands
+     // Check for voice commands
     uint8_t CMDID = asr.getCMDID();
     if (CMDID != 0) {
         Serial.printf("VOICE CMD received: %d\n", CMDID);
         
-        if (CMDID == 104) { // "Turn off the Light" -> Standby
+        if (CMDID == 5) { // "Starte Pomodoro"
+            if (currentAppState == STATE_CLOCK) {
+                currentAppState = STATE_POMODORO;
+                pomodoroSeconds = 25 * 60; 
+                lv_obj_set_style_text_color(ui_Label_time, lv_color_hex(0xFF4500), LV_PART_MAIN); 
+            }
+        } else if (CMDID == 6) { // "Stop Pomodoro"
+            if (currentAppState != STATE_CLOCK) {
+                currentAppState = STATE_CLOCK;
+                lv_obj_set_style_text_color(ui_Label_time, lv_color_hex(0xFFFFFF), LV_PART_MAIN);
+            }
+        } else if (CMDID == 7) { // "Reset Pomodoro"
+            currentAppState = STATE_CLOCK;
+            pomodoroSeconds = 0;
+            lv_obj_set_style_text_color(ui_Label_time, lv_color_hex(0xFFFFFF), LV_PART_MAIN);
+        } else if (CMDID == 8) { // "Laden an"
+            manualCharging = true;
+            Serial.println("Manual Charging: ON via Voice");
+        } else if (CMDID == 9) { // "Laden aus"
+            manualCharging = false;
+            Serial.println("Manual Charging: OFF via Voice");
+        } else if (CMDID == 104) { // "Turn off the Light" -> Standby
             if (!isStandby) {
                 isStandby = true;
-                panel.setBrightness(20); 
-                if (xSemaphoreTake(mutex, portMAX_DELAY)) {
-                    // Hide main clock UI
-                    lv_obj_add_flag(ui_Label_time, LV_OBJ_FLAG_HIDDEN);
-                    if (lv_obj_is_valid(ui_Label_ampm)) lv_obj_add_flag(ui_Label_ampm, LV_OBJ_FLAG_HIDDEN);
-                    if (lv_obj_is_valid(ui_Label_date)) lv_obj_add_flag(ui_Label_date, LV_OBJ_FLAG_HIDDEN);
-                    if (lv_obj_is_valid(ui_Label_phase)) lv_obj_add_flag(ui_Label_phase, LV_OBJ_FLAG_HIDDEN);
-                    if (lv_obj_is_valid(ui_Img_moon)) lv_obj_add_flag(ui_Img_moon, LV_OBJ_FLAG_HIDDEN);
-                    
-                    // Center battery icon for standby
-                    lv_obj_set_pos(ui_Label_BatteryIcon, 0, 0);
-                    lv_obj_clear_flag(ui_Label_BatteryIcon, LV_OBJ_FLAG_HIDDEN);
-                    lv_obj_add_flag(ui_Arc_Battery, LV_OBJ_FLAG_HIDDEN); // Hide arc in standby
-                    
-                    xSemaphoreGive(mutex);
-                }
-                Serial.println("STANDBY: ON");
+                panel.setBrightness(0);
+                Serial.println("STANDBY: ON via Voice (104)");
             }
         } else if (CMDID == 103) { // "Turn on the Light" -> Wakeup
             if (isStandby) {
                 isStandby = false;
-                panel.setBrightness(128);
-                if (xSemaphoreTake(mutex, portMAX_DELAY)) {
-                    // Restore main clock UI
-                    lv_obj_clear_flag(ui_Label_time, LV_OBJ_FLAG_HIDDEN);
-                    if (lv_obj_is_valid(ui_Label_ampm)) lv_obj_clear_flag(ui_Label_ampm, LV_OBJ_FLAG_HIDDEN);
-                    if (lv_obj_is_valid(ui_Label_date)) lv_obj_clear_flag(ui_Label_date, LV_OBJ_FLAG_HIDDEN);
-                    if (lv_obj_is_valid(ui_Label_phase)) lv_obj_clear_flag(ui_Label_phase, LV_OBJ_FLAG_HIDDEN);
-                    if (lv_obj_is_valid(ui_Img_moon)) lv_obj_clear_flag(ui_Img_moon, LV_OBJ_FLAG_HIDDEN);
-                    
-                    // Restore battery icon to top right corner
-                    lv_obj_set_pos(ui_Label_BatteryIcon, 185, 25);
-                    
-                    xSemaphoreGive(mutex);
-                }
-                Serial.println("STANDBY: OFF");
+                panel.setBrightness(128); // Default brightness
+                Serial.println("STANDBY: OFF via Voice (103)");
             }
         }
     }
