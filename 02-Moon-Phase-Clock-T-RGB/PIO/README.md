@@ -16,3 +16,8 @@
     "C:\Users\ed\.platformio\penv\Scripts\pio.exe" device monitor --baud 115200 --port COM6
 ```
 
+## Voice Recognition /Command list:
+0. Wake Word: ## "Hey Lily" ## 
+1. Starte Pomodoro CMID: 5
+2. Pomodoro Stop CMID: 6
+3. Pomodoro Reset CMID: 7
