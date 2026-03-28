@@ -270,11 +270,14 @@ void loop()
             Serial.println("[POWER] Entering STANDBY (Visible Mode)...");
             panel.setBrightness(5); // Very dim for standby
             
-            // Switch to Screen 1 if on Screen 2
-            if (lv_scr_act() == ui_Screen2) {
-                lv_scr_load_anim(ui_Screen1, LV_SCR_LOAD_ANIM_NONE, 0, 0, false);
-            }
-
+            // Move standby UI to the currently active screen
+            lv_obj_t * active_screen = lv_scr_act();
+            lv_obj_set_parent(ui_Label_StandbyIcon, active_screen);
+            lv_obj_set_parent(ui_Label_StandbyPerc, active_screen);
+            
+            // Re-center on the new parent
+            lv_obj_set_align(ui_Label_StandbyIcon, LV_ALIGN_CENTER);
+            lv_obj_set_align(ui_Label_StandbyPerc, LV_ALIGN_CENTER);
             
             // Hide standard UI
             if (lv_obj_is_valid(ui_Img_bg)) lv_obj_add_flag(ui_Img_bg, LV_OBJ_FLAG_HIDDEN);
@@ -377,6 +380,17 @@ void updateAppUI() {
             if (lv_obj_is_valid(ui_Img_moon)) lv_obj_add_flag(ui_Img_moon, LV_OBJ_FLAG_HIDDEN);
             if (lv_obj_is_valid(ui_Label_phase)) lv_obj_add_flag(ui_Label_phase, LV_OBJ_FLAG_HIDDEN);
             
+            // Screen 2 Elemente ausblenden
+            if (lv_obj_is_valid(ui_Container_time2)) lv_obj_add_flag(ui_Container_time2, LV_OBJ_FLAG_HIDDEN);
+            if (lv_obj_is_valid(ui_Label_hrs)) lv_obj_add_flag(ui_Label_hrs, LV_OBJ_FLAG_HIDDEN);
+            if (lv_obj_is_valid(ui_Label_min)) lv_obj_add_flag(ui_Label_min, LV_OBJ_FLAG_HIDDEN);
+            if (lv_obj_is_valid(ui_Label_sec2)) lv_obj_add_flag(ui_Label_sec2, LV_OBJ_FLAG_HIDDEN);
+            if (lv_obj_is_valid(ui_Label_day)) lv_obj_add_flag(ui_Label_day, LV_OBJ_FLAG_HIDDEN);
+            if (lv_obj_is_valid(ui_Container1)) lv_obj_add_flag(ui_Container1, LV_OBJ_FLAG_HIDDEN);
+            if (lv_obj_is_valid(ui_Image6)) lv_obj_add_flag(ui_Image6, LV_OBJ_FLAG_HIDDEN);
+            if (lv_obj_is_valid(ui_Image2)) lv_obj_add_flag(ui_Image2, LV_OBJ_FLAG_HIDDEN);
+            if (lv_obj_is_valid(ui_Image3)) lv_obj_add_flag(ui_Image3, LV_OBJ_FLAG_HIDDEN);
+            
             lv_obj_clear_flag(ui_Label_StandbyIcon, LV_OBJ_FLAG_HIDDEN);
             lv_obj_clear_flag(ui_Label_StandbyPerc, LV_OBJ_FLAG_HIDDEN);
         } else {
@@ -395,6 +409,17 @@ void updateAppUI() {
             if (lv_obj_is_valid(ui_Img_earth)) lv_obj_clear_flag(ui_Img_earth, LV_OBJ_FLAG_HIDDEN);
             if (lv_obj_is_valid(ui_Img_moon)) lv_obj_clear_flag(ui_Img_moon, LV_OBJ_FLAG_HIDDEN);
             if (lv_obj_is_valid(ui_Label_phase)) lv_obj_clear_flag(ui_Label_phase, LV_OBJ_FLAG_HIDDEN);
+
+            // Screen 2 Elemente wieder einblenden
+            if (lv_obj_is_valid(ui_Container_time2)) lv_obj_clear_flag(ui_Container_time2, LV_OBJ_FLAG_HIDDEN);
+            if (lv_obj_is_valid(ui_Label_hrs)) lv_obj_clear_flag(ui_Label_hrs, LV_OBJ_FLAG_HIDDEN);
+            if (lv_obj_is_valid(ui_Label_min)) lv_obj_clear_flag(ui_Label_min, LV_OBJ_FLAG_HIDDEN);
+            if (lv_obj_is_valid(ui_Label_sec2)) lv_obj_clear_flag(ui_Label_sec2, LV_OBJ_FLAG_HIDDEN);
+            if (lv_obj_is_valid(ui_Label_day)) lv_obj_clear_flag(ui_Label_day, LV_OBJ_FLAG_HIDDEN);
+            if (lv_obj_is_valid(ui_Container1)) lv_obj_clear_flag(ui_Container1, LV_OBJ_FLAG_HIDDEN);
+            if (lv_obj_is_valid(ui_Image6)) lv_obj_clear_flag(ui_Image6, LV_OBJ_FLAG_HIDDEN);
+            if (lv_obj_is_valid(ui_Image2)) lv_obj_clear_flag(ui_Image2, LV_OBJ_FLAG_HIDDEN);
+            if (lv_obj_is_valid(ui_Image3)) lv_obj_clear_flag(ui_Image3, LV_OBJ_FLAG_HIDDEN);
         }
         xSemaphoreGive(mutex);
     }
@@ -604,6 +629,6 @@ void updateMoonData() {
 void syncMoonData(void * parameter) {
     for (;;) {
         updateMoonData();
-        vTaskDelay(600000 / portTICK_PERIOD_MS); // Update every 10 minutes
+        vTaskDelay(60000 / portTICK_PERIOD_MS);// 60 Secunden    
     }
 }

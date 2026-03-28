@@ -8,8 +8,9 @@ struct WifiNetwork {
 };
 
 const WifiNetwork networks[] = {
-    {"DeepCore", "ZrrJ-6H6t-xZb4-gq4D"},  // Home
-    {"BTTON3REE", "5341@M5Sam"}           // Hotspot
+    {"BUTTON3REE", "5341@M5Sam"},       // Hotspot
+    {"DeepCore", "ZrrJ-6H6t-xZb4-gq4D"}   // Home
+
 };
 
 const int numNetworks = sizeof(networks) / sizeof(networks[0]);
