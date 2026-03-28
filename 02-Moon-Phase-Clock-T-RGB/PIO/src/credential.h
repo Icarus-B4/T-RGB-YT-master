@@ -2,11 +2,16 @@
 #ifndef CREDENTIAL_H
 #define CREDENTIAL_H
 
-// const char *ssid = "Nishad's iPhone";
-// const char *password = "nishad123@";
+struct WifiNetwork {
+    const char* ssid;
+    const char* password;
+};
 
-const char *ssid = "DeepCore";
-const char *password = "ZrrJ-6H6t-xZb4-gq4D";
+const WifiNetwork networks[] = {
+    {"DeepCore", "ZrrJ-6H6t-xZb4-gq4D"},  // Home
+    {"BTTON3REE", "5341@M5Sam"}           // Hotspot
+};
 
+const int numNetworks = sizeof(networks) / sizeof(networks[0]);
 
 #endif

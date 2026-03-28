@@ -11,6 +11,10 @@ extern lv_obj_t * ui_Label_StandbyPerc;
 extern bool manualCharging;
 extern bool isStandby;
 
+enum AppState { STATE_CLOCK, STATE_POMODORO, STATE_BREAK };
+extern AppState currentAppState;
+extern int32_t pomodoroSeconds;
+
 void updateBattery(unsigned long currentMillis) {
     static unsigned long last_v_update = 0;
     static unsigned long last_anim_update = 0;
@@ -60,7 +64,7 @@ void updateBattery(unsigned long currentMillis) {
         if (autoCharging || manualCharging) {
             // While charging, voltage is artificially HIGH. Subtract offset to guess real state.
             // Offset estimated based on user report of huge jumps (48% -> 100%).
-            v_corr = v - 0.80; 
+            v_corr = v - 0.35; 
         } else {
             // While discharging under load, voltage is LOW. Add offset to match resting state.
             v_corr = v + 0.07; 
@@ -145,9 +149,19 @@ void updateBattery(unsigned long currentMillis) {
             }
 
             if (isStandby) {
-                char buf[16];
-                snprintf(buf, sizeof(buf), "%d%%", display_perc);
-                lv_label_set_text(ui_Label_StandbyPerc, buf);
+                if (currentAppState == STATE_CLOCK) {
+                    char buf[16];
+                    snprintf(buf, sizeof(buf), "%d%%", display_perc);
+                    lv_label_set_text(ui_Label_StandbyPerc, buf);
+                } else {
+                    int mins = pomodoroSeconds / 60;
+                    int secs = pomodoroSeconds % 60;
+                    char buf[16];
+                    snprintf(buf, sizeof(buf), "%02d:%02d", mins, secs);
+                    lv_label_set_text(ui_Label_StandbyPerc, buf);
+                    // Update Icon to indicate Focus/Break
+                    lv_label_set_text(ui_Label_StandbyIcon, currentAppState == STATE_POMODORO ? LV_SYMBOL_PLAY : LV_SYMBOL_PAUSE);
+                }
             }
             xSemaphoreGive(mutex);
         }

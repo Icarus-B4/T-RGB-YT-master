@@ -26,6 +26,8 @@ extern "C" {
 #include "ui_events.h"
 
 void Moon_Animation( lv_obj_t *TargetObject, int delay);
+#include "screens/ui_Screen2.h"
+
 // SCREEN: ui_Screen1
 void ui_Screen1_screen_init(void);
 extern lv_obj_t *ui_Screen1;
@@ -39,11 +41,22 @@ extern lv_obj_t *ui_Img_earth;
 extern lv_obj_t *ui_Label_phase;
 extern lv_obj_t *ui_Label_date;
 extern lv_obj_t *ui_Img_moon;
+extern lv_obj_t *ui_Label_colon1;
+extern lv_obj_t *ui_Label_colon2;
+extern lv_obj_t *ui_Label_colon3;
 extern lv_obj_t *ui____initial_actions0;
 
 LV_IMG_DECLARE( ui_img_images_bg_png);   // assets/Images/bg.png
 LV_IMG_DECLARE( ui_img_images_earth_png);   // assets/Images/earth.png
 LV_IMG_DECLARE( ui_img_images_moon_moon_1_png);   // assets/Images/Moon/Moon_1.png
+LV_IMG_DECLARE( ui_img_images_moon_moon_2_png);   // assets/Images/Moon/Moon_2.png
+LV_IMG_DECLARE( ui_img_images_moon_moon_3_png);   // assets/Images/Moon/Moon_3.png
+LV_IMG_DECLARE( ui_img_images_moon_moon_4_png);   // assets/Images/Moon/Moon_4.png
+LV_IMG_DECLARE( ui_img_images_moon_moon_5_png);   // assets/Images/Moon/Moon_5.png
+LV_IMG_DECLARE( ui_img_images_moon_moon_6_png);   // assets/Images/Moon/Moon_6.png
+LV_IMG_DECLARE( ui_img_images_moon_moon_7_png);   // assets/Images/Moon/Moon_7.png
+LV_IMG_DECLARE( ui_img_images_moon_moon_8_png);   // assets/Images/Moon/Moon_8.png
+LV_IMG_DECLARE( ui_img_images_moon_moon_9_png);   // assets/Images/Moon/Moon_9.png
 LV_IMG_DECLARE( ui_img_images_moon_moon_10_png);   // assets/Images/Moon/Moon_10.png
 LV_IMG_DECLARE( ui_img_images_moon_moon_11_png);   // assets/Images/Moon/Moon_11.png
 LV_IMG_DECLARE( ui_img_images_moon_moon_12_png);   // assets/Images/Moon/Moon_12.png
@@ -54,7 +67,6 @@ LV_IMG_DECLARE( ui_img_images_moon_moon_16_png);   // assets/Images/Moon/Moon_16
 LV_IMG_DECLARE( ui_img_images_moon_moon_17_png);   // assets/Images/Moon/Moon_17.png
 LV_IMG_DECLARE( ui_img_images_moon_moon_18_png);   // assets/Images/Moon/Moon_18.png
 LV_IMG_DECLARE( ui_img_images_moon_moon_19_png);   // assets/Images/Moon/Moon_19.png
-LV_IMG_DECLARE( ui_img_images_moon_moon_2_png);   // assets/Images/Moon/Moon_2.png
 LV_IMG_DECLARE( ui_img_images_moon_moon_20_png);   // assets/Images/Moon/Moon_20.png
 LV_IMG_DECLARE( ui_img_images_moon_moon_21_png);   // assets/Images/Moon/Moon_21.png
 LV_IMG_DECLARE( ui_img_images_moon_moon_22_png);   // assets/Images/Moon/Moon_22.png
@@ -65,15 +77,9 @@ LV_IMG_DECLARE( ui_img_images_moon_moon_26_png);   // assets/Images/Moon/Moon_26
 LV_IMG_DECLARE( ui_img_images_moon_moon_27_png);   // assets/Images/Moon/Moon_27.png
 LV_IMG_DECLARE( ui_img_images_moon_moon_28_png);   // assets/Images/Moon/Moon_28.png
 LV_IMG_DECLARE( ui_img_images_moon_moon_29_png);   // assets/Images/Moon/Moon_29.png
-LV_IMG_DECLARE( ui_img_images_moon_moon_3_png);   // assets/Images/Moon/Moon_3.png
 LV_IMG_DECLARE( ui_img_images_moon_moon_30_png);   // assets/Images/Moon/Moon_30.png
-LV_IMG_DECLARE( ui_img_images_moon_moon_4_png);   // assets/Images/Moon/Moon_4.png
-LV_IMG_DECLARE( ui_img_images_moon_moon_5_png);   // assets/Images/Moon/Moon_5.png
-LV_IMG_DECLARE( ui_img_images_moon_moon_6_png);   // assets/Images/Moon/Moon_6.png
-LV_IMG_DECLARE( ui_img_images_moon_moon_7_png);   // assets/Images/Moon/Moon_7.png
-LV_IMG_DECLARE( ui_img_images_moon_moon_8_png);   // assets/Images/Moon/Moon_8.png
-LV_IMG_DECLARE( ui_img_images_moon_moon_9_png);   // assets/Images/Moon/Moon_9.png
-
+LV_IMG_DECLARE( ui_img_653650985);   // assets/Images/Grace-and-Mercy.png
+LV_IMG_DECLARE( ui_img_images_astronaut_png);
 
 LV_FONT_DECLARE( ui_font_OW100);
 LV_FONT_DECLARE( ui_font_OW35);

@@ -26,6 +26,8 @@ bool fetchMoonData(MoonData &data) {
 
     HTTPClient http;
     http.begin(client, url);
+    http.setTimeout(15000); // 15 Sekunden warten ( NASA Server ist träge)
+    
     Serial.print("[Moon] Fetching: ");
     Serial.println(url);
     
@@ -46,7 +48,17 @@ bool fetchMoonData(MoonData &data) {
                       data.age, data.illumination, data.phaseName.c_str(), data.imageIndex);
         success = true;
     } else {
-        Serial.printf("[Moon] HTTP Error: %d\n", httpCode);
+        Serial.printf("[Moon] HTTP-Fehler: %d\n", httpCode);
+        if (httpCode == -1) {
+            Serial.println("[Moon] Grund: Verbindung fehlgeschlagen (Timeout/DNS/SSL).");
+            Serial.printf("[Moon] WiFi-Status: %d (3=Verbunden)\n", WiFi.status());
+            if (WiFi.status() == WL_CONNECTED) {
+                Serial.print("[Moon] Lokale IP: ");
+                Serial.println(WiFi.localIP());
+            }
+        } else if (httpCode == -11) {
+            Serial.println("[Moon] Grund: Server-Timeout (NASA API ist langsam).");
+        }
     }
     
     http.end();

@@ -23,7 +23,11 @@ lv_obj_t *ui_Img_earth;
 lv_obj_t *ui_Label_phase;
 lv_obj_t *ui_Label_date;
 lv_obj_t *ui_Img_moon;
+lv_obj_t *ui_Label_colon1;
+lv_obj_t *ui_Label_colon2;
+lv_obj_t *ui_Label_colon3;
 lv_obj_t *ui____initial_actions0;
+
 const lv_img_dsc_t *ui_imgset_moon_[30] = {&ui_img_images_moon_moon_1_png, &ui_img_images_moon_moon_2_png, &ui_img_images_moon_moon_3_png, &ui_img_images_moon_moon_4_png, &ui_img_images_moon_moon_5_png, &ui_img_images_moon_moon_6_png, &ui_img_images_moon_moon_7_png, &ui_img_images_moon_moon_8_png, &ui_img_images_moon_moon_9_png, &ui_img_images_moon_moon_10_png, &ui_img_images_moon_moon_11_png, &ui_img_images_moon_moon_12_png, &ui_img_images_moon_moon_13_png, &ui_img_images_moon_moon_14_png, &ui_img_images_moon_moon_15_png, &ui_img_images_moon_moon_16_png, &ui_img_images_moon_moon_17_png, &ui_img_images_moon_moon_18_png, &ui_img_images_moon_moon_19_png, &ui_img_images_moon_moon_20_png, &ui_img_images_moon_moon_21_png, &ui_img_images_moon_moon_22_png, &ui_img_images_moon_moon_23_png, &ui_img_images_moon_moon_24_png, &ui_img_images_moon_moon_25_png, &ui_img_images_moon_moon_26_png, &ui_img_images_moon_moon_27_png, &ui_img_images_moon_moon_28_png, &ui_img_images_moon_moon_29_png, &ui_img_images_moon_moon_30_png};
 
 ///////////////////// TEST LVGL SETTINGS ////////////////////
@@ -39,7 +43,7 @@ void Moon_Animation( lv_obj_t *TargetObject, int delay)
 {
 ui_anim_user_data_t *PropertyAnimation_0_user_data = lv_mem_alloc(sizeof(ui_anim_user_data_t));
 PropertyAnimation_0_user_data->target = TargetObject;
-PropertyAnimation_0_user_data->imgset = ui_imgset_moon_;
+PropertyAnimation_0_user_data->imgset = (lv_img_dsc_t **)ui_imgset_moon_;
 PropertyAnimation_0_user_data->imgset_size = sizeof(ui_imgset_moon_)/(sizeof(lv_img_dsc_t*));
 PropertyAnimation_0_user_data->val = -1;
 lv_anim_t PropertyAnimation_0;
@@ -71,6 +75,8 @@ lv_disp_t *dispp = lv_disp_get_default();
 lv_theme_t *theme = lv_theme_default_init(dispp, lv_palette_main(LV_PALETTE_BLUE), lv_palette_main(LV_PALETTE_RED), true, LV_FONT_DEFAULT);
 lv_disp_set_theme(dispp, theme);
 ui_Screen1_screen_init();
+ui_Screen2_screen_init();
+
 ui____initial_actions0 = lv_obj_create(NULL);
 lv_disp_load_scr( ui_Screen1);
 }

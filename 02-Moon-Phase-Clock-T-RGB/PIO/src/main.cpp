@@ -21,11 +21,15 @@ const char* ntpServer = "pool.ntp.org";
 const char* timeZone = "CET-1CEST,M3.5.0,M10.5.0/3";
 
 SemaphoreHandle_t mutex;
+SemaphoreHandle_t asrMutex;
 TaskHandle_t updateTimeTaskHandle = NULL;
 TaskHandle_t syncMoonDataTaskHandle = NULL;
 unsigned long previousMillis = 0;
 const long interval = 1000;
 const long ntpSyncInterval = 60000;
+const unsigned long AUTO_SCREEN_1_DURATION = 30 * 60 * 1000; // 30 Minuten Mond
+const unsigned long AUTO_SCREEN_2_DURATION = 30 * 60 * 1000; // 30 Minuten Countdown
+unsigned long lastScreenChangeMillis = 0;
 unsigned long previousNtpMillis = 0;
 unsigned long previousMoonUpdateMillis = 0;
 
@@ -37,6 +41,7 @@ void updateUILabels(String formattedTime, String ampm, String formattedDate);
 void updateMoonData();
 void wakeup();
 void recoverVoiceModule();
+void updateAppUI();
 
 
 extern const lv_img_dsc_t *ui_imgset_moon_[30];
@@ -51,21 +56,46 @@ bool isStandby = false;
 
 AppState currentAppState = STATE_CLOCK;
 int32_t pomodoroSeconds = 0;
+uint32_t ignoreAasrUntil = 0; 
 void wakeup_event_cb(lv_event_t * e) {
     if (isStandby) {
         isStandby = false;
     }
 }
 
+void screen1_swipe_cb(lv_event_t * e) {
+    lv_dir_t dir = lv_indev_get_gesture_dir(lv_indev_get_act());
+    if (dir == LV_DIR_LEFT) {
+        lv_scr_load_anim(ui_Screen2, LV_SCR_LOAD_ANIM_MOVE_LEFT, 300, 0, false);
+        lastScreenChangeMillis = millis(); // Reset timer on manual swipe
+    }
+}
+
+void screen2_swipe_cb(lv_event_t * e) {
+    lv_dir_t dir = lv_indev_get_gesture_dir(lv_indev_get_act());
+    if (dir == LV_DIR_RIGHT) {
+        lv_scr_load_anim(ui_Screen1, LV_SCR_LOAD_ANIM_MOVE_RIGHT, 300, 0, false);
+        lastScreenChangeMillis = millis(); // Reset timer on manual swipe
+    }
+}
+
+
 void pomodoro_event_cb(lv_event_t * e) {
     if (currentAppState == STATE_CLOCK) {
         currentAppState = STATE_POMODORO;
-        pomodoroSeconds = 25 * 60; 
+        // pomodoroSeconds = 1 * 10; // 10 Sekunden Test
+        pomodoroSeconds = 25 * 60; // 25 Minuten
         lv_obj_set_style_text_color(ui_Label_time, lv_color_hex(0xFF4500), LV_PART_MAIN); 
-        asr.playByCMDID(1);
+        if (xSemaphoreTake(asrMutex, portMAX_DELAY)) {
+            asr.playByCMDID(5); // "Starte Pomodoro" Sprachausgabe
+            ignoreAasrUntil = millis() + 4000; // Eigene Stimme 4 Sek. ignorieren
+            xSemaphoreGive(asrMutex);
+        }
+        updateAppUI();
     } else {
         currentAppState = STATE_CLOCK;
         lv_obj_set_style_text_color(ui_Label_time, lv_color_hex(0xFFFFFF), LV_PART_MAIN);
+        updateAppUI();
     }
 }
 
@@ -98,12 +128,17 @@ void setup(void)
     Wire.setClock(100000); 
     delay(100);
 
-    if (!asr.begin()) {
-        Serial.println("Voice recognition module not found!");
-    } else {
-        asr.setVolume(10);
-        asr.setMuteMode(0); 
-        asr.setWakeTime(18);
+    asrMutex = xSemaphoreCreateMutex();
+
+    if (xSemaphoreTake(asrMutex, portMAX_DELAY)) {
+        if (!asr.begin()) {
+            Serial.println("Voice recognition module not found!");
+        } else {
+            asr.setVolume(15); // Testweise auf 15 (Bereich 1-20)
+            asr.setMuteMode(0); 
+            asr.setWakeTime(18);
+        }
+        xSemaphoreGive(asrMutex);
     }
 
     ui_Arc_Battery = lv_arc_create(lv_scr_act());
@@ -151,11 +186,18 @@ void setup(void)
     lv_obj_add_flag(ui_Screen1, LV_OBJ_FLAG_CLICKABLE);
     lv_obj_add_event_cb(ui_Screen1, wakeup_event_cb, LV_EVENT_CLICKED, NULL);
 
+    lv_obj_add_event_cb(ui_Screen1, screen1_swipe_cb, LV_EVENT_GESTURE, NULL);
+    lv_obj_clear_flag(ui_Screen1, LV_OBJ_FLAG_SCROLLABLE);
+
+    lv_obj_add_event_cb(ui_Screen2, screen2_swipe_cb, LV_EVENT_GESTURE, NULL);
+    lv_obj_clear_flag(ui_Screen2, LV_OBJ_FLAG_SCROLLABLE);
+
+
     mutex = xSemaphoreCreateMutex();
     xTaskCreate(updateTime, "UpdateTime", 8192, NULL, 1, &updateTimeTaskHandle);
     xTaskCreate(syncMoonData, "SyncMoonData", 8192, NULL, 1, &syncMoonDataTaskHandle);
 
-    updateMoonData();
+    // updateMoonData(); // Redundant, wird bereits vom syncMoonData Task beim Start erledigt
     pinMode(0, INPUT_PULLUP);
 }
 
@@ -169,7 +211,12 @@ void loop()
     }
 
      // Check for voice commands
-    uint8_t CMDID = asr.getCMDID();
+    uint8_t CMDID = 0;
+    if (millis() > ignoreAasrUntil && xSemaphoreTake(asrMutex, 10)) {
+        CMDID = asr.getCMDID();
+        xSemaphoreGive(asrMutex);
+    }
+
     if (CMDID != 0) {
         Serial.printf("VOICE CMD received: %d\n", CMDID);
         
@@ -178,16 +225,19 @@ void loop()
                 currentAppState = STATE_POMODORO;
                 pomodoroSeconds = 25 * 60; 
                 lv_obj_set_style_text_color(ui_Label_time, lv_color_hex(0xFF4500), LV_PART_MAIN); 
+                updateAppUI();
             }
         } else if (CMDID == 6) { // "Stop Pomodoro"
             if (currentAppState != STATE_CLOCK) {
                 currentAppState = STATE_CLOCK;
                 lv_obj_set_style_text_color(ui_Label_time, lv_color_hex(0xFFFFFF), LV_PART_MAIN);
+                updateAppUI();
             }
         } else if (CMDID == 7) { // "Reset Pomodoro"
             currentAppState = STATE_CLOCK;
             pomodoroSeconds = 0;
             lv_obj_set_style_text_color(ui_Label_time, lv_color_hex(0xFFFFFF), LV_PART_MAIN);
+            updateAppUI();
         } else if (CMDID == 104) { // "Turn off the Light" -> Standby
             if (!isStandby) {
                 isStandby = true;
@@ -220,6 +270,12 @@ void loop()
             Serial.println("[POWER] Entering STANDBY (Visible Mode)...");
             panel.setBrightness(5); // Very dim for standby
             
+            // Switch to Screen 1 if on Screen 2
+            if (lv_scr_act() == ui_Screen2) {
+                lv_scr_load_anim(ui_Screen1, LV_SCR_LOAD_ANIM_NONE, 0, 0, false);
+            }
+
+            
             // Hide standard UI
             if (lv_obj_is_valid(ui_Img_bg)) lv_obj_add_flag(ui_Img_bg, LV_OBJ_FLAG_HIDDEN);
             if (lv_obj_is_valid(ui_Container_time)) lv_obj_add_flag(ui_Container_time, LV_OBJ_FLAG_HIDDEN);
@@ -232,24 +288,18 @@ void loop()
             // Show standby UI
             lv_obj_clear_flag(ui_Label_StandbyIcon, LV_OBJ_FLAG_HIDDEN);
             lv_obj_clear_flag(ui_Label_StandbyPerc, LV_OBJ_FLAG_HIDDEN);
+            updateAppUI();
         } else {
             Serial.println("[POWER] Woke up from STANDBY");
             panel.setBrightness(160); // Restore brightness
+            updateAppUI();
             
             // Show standard UI
             if (lv_obj_is_valid(ui_Img_bg)) lv_obj_clear_flag(ui_Img_bg, LV_OBJ_FLAG_HIDDEN);
             if (lv_obj_is_valid(ui_Container_time)) lv_obj_clear_flag(ui_Container_time, LV_OBJ_FLAG_HIDDEN);
             if (lv_obj_is_valid(ui_Panel1)) lv_obj_clear_flag(ui_Panel1, LV_OBJ_FLAG_HIDDEN);
             if (lv_obj_is_valid(ui_Label_date)) lv_obj_clear_flag(ui_Label_date, LV_OBJ_FLAG_HIDDEN);
-            if (lv_obj_is_valid(ui_Img_earth)) lv_obj_clear_flag(ui_Img_earth, LV_OBJ_FLAG_HIDDEN);
-            if (lv_obj_is_valid(ui_Img_moon)) lv_obj_clear_flag(ui_Img_moon, LV_OBJ_FLAG_HIDDEN);
-            if (lv_obj_is_valid(ui_Label_phase)) lv_obj_clear_flag(ui_Label_phase, LV_OBJ_FLAG_HIDDEN);
-            if (lv_obj_is_valid(ui_Label_BatteryIcon)) lv_obj_clear_flag(ui_Label_BatteryIcon, LV_OBJ_FLAG_HIDDEN);
-            if (lv_obj_is_valid(ui_Arc_Battery)) lv_obj_clear_flag(ui_Arc_Battery, LV_OBJ_FLAG_HIDDEN);
-            
-            // Hide standby UI
-            lv_obj_add_flag(ui_Label_StandbyIcon, LV_OBJ_FLAG_HIDDEN);
-            lv_obj_add_flag(ui_Label_StandbyPerc, LV_OBJ_FLAG_HIDDEN);
+            // Elements below are handled by updateAppUI fine, but loop did it here before
         }
         lastStandbyState = isStandby;
     }
@@ -265,10 +315,34 @@ void loop()
     static unsigned long lastVoiceCheck = 0;
     if (millis() - lastVoiceCheck > 60000) {
         lastVoiceCheck = millis();
-        uint8_t currWake = asr.getWakeTime();
-        if (currWake != 18) {
-            Serial.printf("[VOICE] Health check failed (Received %d, expected 18)...\n", currWake);
-            recoverVoiceModule();
+        uint8_t currWake = 0;
+        if (xSemaphoreTake(asrMutex, 10)) {
+            currWake = asr.getWakeTime();
+            xSemaphoreGive(asrMutex);
+            if (currWake != 18) {
+                Serial.printf("[VOICE] Health check failed (Received %d, expected 18)...\n", currWake);
+                recoverVoiceModule();
+            }
+        }
+    }
+
+    // Automatic Screen Switch Logic (Glance Mode)
+    if (!isStandby && currentAppState == STATE_CLOCK) {
+        unsigned long currentMillis = millis();
+        lv_obj_t * active_screen = lv_scr_act();
+        
+        if (active_screen == ui_Screen1) {
+            if (currentMillis - lastScreenChangeMillis >= AUTO_SCREEN_1_DURATION) {
+                Serial.println("[UI] Auto-switching to Screen 2 (Countdown)...");
+                lv_scr_load_anim(ui_Screen2, LV_SCR_LOAD_ANIM_MOVE_LEFT, 500, 0, false);
+                lastScreenChangeMillis = currentMillis;
+            }
+        } else if (active_screen == ui_Screen2) {
+            if (currentMillis - lastScreenChangeMillis >= AUTO_SCREEN_2_DURATION) {
+                Serial.println("[UI] Auto-switching back to Screen 1 (Moon)...");
+                lv_scr_load_anim(ui_Screen1, LV_SCR_LOAD_ANIM_MOVE_RIGHT, 500, 0, false);
+                lastScreenChangeMillis = currentMillis;
+            }
         }
     }
 
@@ -277,33 +351,82 @@ void loop()
 
 void recoverVoiceModule() {
     Serial.println("[VOICE] Resetting module and I2C connection...");
-    // Wire.begin() is called inside asr.begin() for this library
-    if (asr.begin()) {
-        asr.setVolume(10);
-        asr.setMuteMode(0);
-        asr.setWakeTime(18);
-        Serial.println("[VOICE] Recovery successful!");
-    } else {
-        Serial.println("[VOICE] CRITICAL: Voice module unresponsive on I2C bus.");
+    if (xSemaphoreTake(asrMutex, portMAX_DELAY)) {
+        // Wire.begin() is called inside asr.begin() for this library
+        if (asr.begin()) {
+            asr.setVolume(15);
+            asr.setMuteMode(0);
+            asr.setWakeTime(18);
+            Serial.println("[VOICE] Recovery successful!");
+        } else {
+            Serial.println("[VOICE] CRITICAL: Voice module unresponsive on I2C bus.");
+        }
+        xSemaphoreGive(asrMutex);
+    }
+}
+
+void updateAppUI() {
+    if (xSemaphoreTake(mutex, portMAX_DELAY)) {
+        if (isStandby) {
+            // Im Standby wird alles außer der Standby-Anzeige ausgeblendet
+            if (lv_obj_is_valid(ui_Img_bg)) lv_obj_add_flag(ui_Img_bg, LV_OBJ_FLAG_HIDDEN);
+            if (lv_obj_is_valid(ui_Container_time)) lv_obj_add_flag(ui_Container_time, LV_OBJ_FLAG_HIDDEN);
+            if (lv_obj_is_valid(ui_Panel1)) lv_obj_add_flag(ui_Panel1, LV_OBJ_FLAG_HIDDEN);
+            if (lv_obj_is_valid(ui_Label_date)) lv_obj_add_flag(ui_Label_date, LV_OBJ_FLAG_HIDDEN);
+            if (lv_obj_is_valid(ui_Img_earth)) lv_obj_add_flag(ui_Img_earth, LV_OBJ_FLAG_HIDDEN);
+            if (lv_obj_is_valid(ui_Img_moon)) lv_obj_add_flag(ui_Img_moon, LV_OBJ_FLAG_HIDDEN);
+            if (lv_obj_is_valid(ui_Label_phase)) lv_obj_add_flag(ui_Label_phase, LV_OBJ_FLAG_HIDDEN);
+            
+            lv_obj_clear_flag(ui_Label_StandbyIcon, LV_OBJ_FLAG_HIDDEN);
+            lv_obj_clear_flag(ui_Label_StandbyPerc, LV_OBJ_FLAG_HIDDEN);
+        } else {
+            // Normal-Modus
+            lv_obj_add_flag(ui_Label_StandbyIcon, LV_OBJ_FLAG_HIDDEN);
+            lv_obj_add_flag(ui_Label_StandbyPerc, LV_OBJ_FLAG_HIDDEN);
+            
+            if (lv_obj_is_valid(ui_Img_bg)) lv_obj_clear_flag(ui_Img_bg, LV_OBJ_FLAG_HIDDEN);
+            if (lv_obj_is_valid(ui_Container_time)) lv_obj_clear_flag(ui_Container_time, LV_OBJ_FLAG_HIDDEN);
+            if (lv_obj_is_valid(ui_Panel1)) lv_obj_clear_flag(ui_Panel1, LV_OBJ_FLAG_HIDDEN);
+            if (lv_obj_is_valid(ui_Label_date)) lv_obj_clear_flag(ui_Label_date, LV_OBJ_FLAG_HIDDEN);
+            if (lv_obj_is_valid(ui_Label_BatteryIcon)) lv_obj_clear_flag(ui_Label_BatteryIcon, LV_OBJ_FLAG_HIDDEN);
+            if (lv_obj_is_valid(ui_Arc_Battery)) lv_obj_clear_flag(ui_Arc_Battery, LV_OBJ_FLAG_HIDDEN);
+
+            // Mond, Erde und Mondphase bleiben im NormalModus immer sichtbar
+            if (lv_obj_is_valid(ui_Img_earth)) lv_obj_clear_flag(ui_Img_earth, LV_OBJ_FLAG_HIDDEN);
+            if (lv_obj_is_valid(ui_Img_moon)) lv_obj_clear_flag(ui_Img_moon, LV_OBJ_FLAG_HIDDEN);
+            if (lv_obj_is_valid(ui_Label_phase)) lv_obj_clear_flag(ui_Label_phase, LV_OBJ_FLAG_HIDDEN);
+        }
+        xSemaphoreGive(mutex);
     }
 }
 
 void connectToWiFi() {
-    Serial.print("[WiFi] Connecting to: ");
-    Serial.println(ssid);
-    WiFi.begin(ssid, password);
-    int retryCount = 0;
-    while (WiFi.status() != WL_CONNECTED) {
-        delay(1000);
-        Serial.print(".");
-        retryCount++;
-        if (retryCount > 30) {
-            Serial.println("\n[WiFi] Connection FAILED. Check credentials.");
+    Serial.println("[WiFi] Starte Verbindungssuche...");
+    for (int i = 0; i < numNetworks; i++) {
+        Serial.printf("[WiFi] Versuche Verbindung mit SSID: '%s'...\n", networks[i].ssid);
+        WiFi.begin(networks[i].ssid, networks[i].password);
+        
+        int retryCount = 0;
+        while (WiFi.status() != WL_CONNECTED) {
+            delay(1000); 
+            Serial.print(".");
+            retryCount++;
+            if (retryCount > 15) { 
+                Serial.printf("\n[WiFi] Keine Antwort von %s nach 15s.\n", networks[i].ssid);
+                WiFi.disconnect();
+                break;
+            }
+        }
+        
+        if (WiFi.status() == WL_CONNECTED) {
+            Serial.printf("\n[WiFi] ERFOLGREICH verbunden mit: %s\n", networks[i].ssid);
+            Serial.print("[WiFi] IP-Adresse: ");
+            Serial.println(WiFi.localIP());
             return;
         }
     }
-    Serial.print("\n[WiFi] Connected! IP: ");
-    Serial.println(WiFi.localIP());
+    Serial.println("\n[WiFi] KRITISCH: Konnte zu KEINEM der gespeicherten Netzwerke verbinden.");
+    Serial.println("[WiFi] Hinweis: Prüfe Hotspot-Frequenz (nur 2.4GHz!) und Batteriestand.");
 }
 
 // ================= BACKGROUND TASK: CLOCK & SYSTEM =================
@@ -337,11 +460,25 @@ void updateTime(void * parameter) {
                         currentAppState = STATE_BREAK;
                         pomodoroSeconds = 5 * 60; 
                         lv_obj_set_style_text_color(ui_Label_time, lv_color_hex(0x00FF00), LV_PART_MAIN); 
-                        asr.playByCMDID(5); 
+                        Serial.println("[VOICE] Playing Pause Start (CMD 104)...");
+                        if (xSemaphoreTake(asrMutex, portMAX_DELAY)) {
+                            asr.playByCMDID(104); // "I'm off now" (Test mit Licht-Aus ID)
+                            ignoreAasrUntil = millis() + 4000;
+                            xSemaphoreGive(asrMutex);
+                        }
+                        updateAppUI();
                     } else {
                         currentAppState = STATE_CLOCK;
                         lv_obj_set_style_text_color(ui_Label_time, lv_color_hex(0xFFFFFF), LV_PART_MAIN);
-                        asr.playByCMDID(1); 
+                        Serial.println("[VOICE] Playing Timer Done (CMD 23)...");
+                        if (xSemaphoreTake(asrMutex, portMAX_DELAY)) {
+                            asr.playByCMDID(23); // "Done"
+                            delay(50); // 50 ms warten
+                            asr.playByCMDID(103); // "Done"
+                            ignoreAasrUntil = millis() + 4000;
+                            xSemaphoreGive(asrMutex);
+                        }
+                        updateAppUI();
                     }
                 }
                 
@@ -370,6 +507,53 @@ void updateTime(void * parameter) {
 
                 if (xSemaphoreTake(mutex, portMAX_DELAY)) {
                     updateUILabels(String(timeStr), ampm, String(dateStr));
+                    
+                    // Update Countdown for Screen 2
+                    struct tm targetDate = {0};
+                    targetDate.tm_year = 2026 - 1900; 
+                    targetDate.tm_mon  = 5 - 1; // May
+                    targetDate.tm_mday = 6;
+                    targetDate.tm_hour = 0;
+                    targetDate.tm_min  = 0;
+                    targetDate.tm_sec  = 0;
+
+                    time_t targetTimestamp = mktime(&targetDate);
+                    double diffSeconds = difftime(targetTimestamp, now);
+
+                    if (diffSeconds > 0) {
+                        long diffSecsInt = (long)diffSeconds;
+                        int days = diffSecsInt / 86400;
+                        diffSecsInt %= 86400;
+                        int hours = diffSecsInt / 3600;
+                        diffSecsInt %= 3600;
+                        int minutes = diffSecsInt / 60;
+                        int remainingSeconds = diffSecsInt % 60;
+
+                        char buf[10];
+                        if (lv_obj_is_valid(ui_Label_day)) {
+                            snprintf(buf, sizeof(buf), "%02d", days);
+                            lv_label_set_text(ui_Label_day, buf);
+                        }
+                        if (lv_obj_is_valid(ui_Label_hrs)) {
+                            snprintf(buf, sizeof(buf), "%02d", hours);
+                            lv_label_set_text(ui_Label_hrs, buf);
+                        }
+                        if (lv_obj_is_valid(ui_Label_min)) {
+                            snprintf(buf, sizeof(buf), "%02d", minutes);
+                            lv_label_set_text(ui_Label_min, buf);
+                        }
+                        if (lv_obj_is_valid(ui_Label_sec2)) {
+                            snprintf(buf, sizeof(buf), "%02d", remainingSeconds);
+                            lv_label_set_text(ui_Label_sec2, buf);
+                        }
+                    } else {
+                        if (lv_obj_is_valid(ui_Label_day)) lv_label_set_text(ui_Label_day, "00");
+                        if (lv_obj_is_valid(ui_Label_hrs)) lv_label_set_text(ui_Label_hrs, "00");
+                        if (lv_obj_is_valid(ui_Label_min)) lv_label_set_text(ui_Label_min, "00");
+                        if (lv_obj_is_valid(ui_Label_sec2)) lv_label_set_text(ui_Label_sec2, "00");
+                    }
+
+                    
                     xSemaphoreGive(mutex);
                 }
             }
@@ -377,8 +561,12 @@ void updateTime(void * parameter) {
 
         if (currentMillis - previousNtpMillis >= ntpSyncInterval) {
             previousNtpMillis = currentMillis;
-            configTzTime(timeZone, ntpServer);
-            Serial.println("Synced with NTP server");
+            if (WiFi.status() == WL_CONNECTED) {
+                configTzTime(timeZone, ntpServer);
+                Serial.println("[NTP] Zeit-Synchronisierung angefordert...");
+            } else {
+                Serial.println("[NTP] Keine Synchronisierung möglich (WLAN getrennt).");
+            }
         }
 
         vTaskDelay(10 / portTICK_PERIOD_MS);
@@ -402,6 +590,9 @@ void updateMoonData() {
             }
             if (lv_obj_is_valid(ui_Img_moon)) {
                 lv_img_set_src(ui_Img_moon, ui_imgset_moon_[data.imageIndex]);
+            }
+            if (lv_obj_is_valid(ui_Image6)) {
+                lv_img_set_src(ui_Image6, ui_imgset_moon_[data.imageIndex]);
             }
             xSemaphoreGive(mutex);
         }
