@@ -28,4 +28,7 @@
 - **Voice Commands:** Identifier für Pomodoro (Start=5, Stop=6, Reset=7).
 - **Batterie-Thresholds:** 4.1V (100%), 3.4V (Kritisch).
 - **Standby:** Bei Standby (Light Sleep) wird das Display gedimmt und nur die Batterie-Anzeige (Icon + Prozent) mittig angezeigt.
-
+## Projekt-Gedächtnis & Session-Abschluss
+- **Gedächtnis:** Nutze den Skill `memory-chat-conversation`, um den Projektstatus in `.agent/CONVERSATION_MEMORY.md` zu pflegen.
+- **Session-Abschluss:** Vor dem Beenden einer Sitzung oder nach Abschluss einer größeren Aufgabe MUSS der Agent automatisch eine chronologische Zusammenfassung in die Historie von `CONVERSATION_MEMORY.md` prependen (voranstellen).
+- **Sicherheits-Checkpoints:** BEVOR langwierige oder riskante Operationen (große Refactorings, Library-Wechsel, lange Compile-Vorgänge) gestartet werden, MUSS ein kurzer "Checkpoint" in die `CONVERSATION_MEMORY.md` geschrieben werden, um Datenverlust bei Systemabstürzen vorzubeugen.

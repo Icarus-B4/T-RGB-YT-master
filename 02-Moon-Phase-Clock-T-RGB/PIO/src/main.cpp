@@ -8,6 +8,7 @@
 #include "DFRobot_DF2301Q.h"
 #include "battery.h"
 #include "moon.h"
+#include <WirelessSerial.h>
 
 
 #include "credential.h"
@@ -22,13 +23,14 @@ const char* timeZone = "CET-1CEST,M3.5.0,M10.5.0/3";
 
 SemaphoreHandle_t mutex;
 SemaphoreHandle_t asrMutex;
+SemaphoreHandle_t i2cMutex;
 TaskHandle_t updateTimeTaskHandle = NULL;
 TaskHandle_t syncMoonDataTaskHandle = NULL;
 unsigned long previousMillis = 0;
 const long interval = 1000;
 const long ntpSyncInterval = 60000;
 const unsigned long AUTO_SCREEN_1_DURATION = 30 * 60 * 1000; // 30 Minuten Mond
-const unsigned long AUTO_SCREEN_2_DURATION = 30 * 60 * 1000; // 30 Minuten Countdown
+const unsigned long AUTO_SCREEN_2_DURATION = 1 * 60 * 1000;  // 1 Minute Countdown
 unsigned long lastScreenChangeMillis = 0;
 unsigned long previousNtpMillis = 0;
 unsigned long previousMoonUpdateMillis = 0;
@@ -102,24 +104,37 @@ void pomodoro_event_cb(lv_event_t * e) {
 void setup(void)
 {
     Serial.begin(115200); 
-    delay(2000); // Give serial some time
-    Serial.println("\n[BOOT] Starting Lilygo T-RGB Moon Clock...");
+    delay(2000);
+    WirelessSerial.println("\n[BOOT] Starting Lilygo T-RGB Moon Clock...");
 
     connectToWiFi();
+    WirelessSerial.begin(); 
+    WirelessSerial.println("[BOOT] Wireless Serial Server started.");
+
     configTzTime(timeZone, ntpServer);
 
+    i2cMutex = xSemaphoreCreateMutex();
+
     int retryPanel = 0;
-    while (!panel.begin()) {
-        retryPanel++;
-        Serial.printf("[BOOT] Error, failed to initialize T-RGB Panel (XL9555) - Attempt %d\n", retryPanel);
-        if (retryPanel > 5) {
-            Serial.println("[BOOT] CRITICAL: Panel initialization failed after 5 attempts. Rebooting...");
-            delay(5000);
-            ESP.restart();
+    bool panelStarted = false;
+    while (!panelStarted) {
+        if (xSemaphoreTake(i2cMutex, portMAX_DELAY)) {
+            panelStarted = panel.begin();
+            xSemaphoreGive(i2cMutex);
         }
-        delay(1000);
+        
+        if (!panelStarted) {
+            retryPanel++;
+            WirelessSerial.printf("[BOOT] Error, failed to initialize T-RGB Panel (XL9555) - Attempt %d\n", retryPanel);
+            if (retryPanel > 5) {
+                WirelessSerial.println("[BOOT] CRITICAL: Panel initialization failed after 5 attempts. Rebooting...");
+                delay(5000);
+                ESP.restart();
+            }
+            delay(1000);
+        }
     }
-    Serial.println("[BOOT] Panel initialized successfully!");
+    WirelessSerial.println("[BOOT] Panel initialized successfully!\n"); // Extra newline to separate from battery logs
     
     beginLvglHelper(panel);
     ui_init();
@@ -131,12 +146,21 @@ void setup(void)
     asrMutex = xSemaphoreCreateMutex();
 
     if (xSemaphoreTake(asrMutex, portMAX_DELAY)) {
-        if (!asr.begin()) {
-            Serial.println("Voice recognition module not found!");
+        bool asrOk = false;
+        if (xSemaphoreTake(i2cMutex, portMAX_DELAY)) {
+            asrOk = asr.begin();
+            xSemaphoreGive(i2cMutex);
+        }
+
+        if (!asrOk) {
+            WirelessSerial.println("Voice recognition module not found!");
         } else {
-            asr.setVolume(15); // Testweise auf 15 (Bereich 1-20)
-            asr.setMuteMode(0); 
-            asr.setWakeTime(18);
+            if (xSemaphoreTake(i2cMutex, portMAX_DELAY)) {
+                asr.setVolume(15); 
+                asr.setMuteMode(0); 
+                asr.setWakeTime(18);
+                xSemaphoreGive(i2cMutex);
+            }
         }
         xSemaphoreGive(asrMutex);
     }
@@ -204,6 +228,7 @@ void setup(void)
 void loop()
 {
     lv_task_handler();
+    WirelessSerial.update();
 
     if (Serial.available()) {
         char c = Serial.read();
@@ -213,12 +238,15 @@ void loop()
      // Check for voice commands
     uint8_t CMDID = 0;
     if (millis() > ignoreAasrUntil && xSemaphoreTake(asrMutex, 10)) {
-        CMDID = asr.getCMDID();
+        if (xSemaphoreTake(i2cMutex, 10)) {
+            CMDID = asr.getCMDID();
+            xSemaphoreGive(i2cMutex);
+        }
         xSemaphoreGive(asrMutex);
     }
 
     if (CMDID != 0) {
-        Serial.printf("VOICE CMD received: %d\n", CMDID);
+        WirelessSerial.printf("VOICE CMD received: %d\n", CMDID);
         
         if (CMDID == 5) { // "Starte Pomodoro"
             if (currentAppState == STATE_CLOCK) {
@@ -241,12 +269,12 @@ void loop()
         } else if (CMDID == 104) { // "Turn off the Light" -> Standby
             if (!isStandby) {
                 isStandby = true;
-                Serial.println("STANDBY: ON via Voice (104)");
+                WirelessSerial.println("STANDBY: ON via Voice (104)");
             }
         } else if (CMDID == 103) { // "Turn on the Light" -> Wakeup
             if (isStandby) {
                 isStandby = false;
-                Serial.println("STANDBY: OFF via Voice (103)");
+                WirelessSerial.println("STANDBY: OFF via Voice (103)");
             }
         }
     }
@@ -257,7 +285,7 @@ void loop()
         if (btnPressStart == 0) btnPressStart = millis();
         // Long press (> 2 seconds) triggers Deep Sleep
         if (millis() - btnPressStart > 2000) {
-            Serial.println("[POWER] Button Long Press -> Entering DEEP SLEEP");
+            WirelessSerial.println("[POWER] Button Long Press -> Entering DEEP SLEEP");
             panel.sleep(); // Starts Deep Sleep
         }
     } else {
@@ -267,7 +295,7 @@ void loop()
     static bool lastStandbyState = false;
     if (isStandby != lastStandbyState) {
         if (isStandby) {
-            Serial.println("[POWER] Entering STANDBY (Visible Mode)...");
+            WirelessSerial.println("[POWER] Entering STANDBY (Visible Mode)...");
             panel.setBrightness(5); // Very dim for standby
             
             // Move standby UI to the currently active screen
@@ -293,7 +321,7 @@ void loop()
             lv_obj_clear_flag(ui_Label_StandbyPerc, LV_OBJ_FLAG_HIDDEN);
             updateAppUI();
         } else {
-            Serial.println("[POWER] Woke up from STANDBY");
+            WirelessSerial.println("[POWER] Woke up from STANDBY");
             panel.setBrightness(160); // Restore brightness
             updateAppUI();
             
@@ -320,10 +348,13 @@ void loop()
         lastVoiceCheck = millis();
         uint8_t currWake = 0;
         if (xSemaphoreTake(asrMutex, 10)) {
-            currWake = asr.getWakeTime();
+            if (xSemaphoreTake(i2cMutex, 10)) {
+                currWake = asr.getWakeTime();
+                xSemaphoreGive(i2cMutex);
+            }
             xSemaphoreGive(asrMutex);
             if (currWake != 18) {
-                Serial.printf("[VOICE] Health check failed (Received %d, expected 18)...\n", currWake);
+                WirelessSerial.printf("[VOICE] Health check failed (Received %d, expected 18)...\n", currWake);
                 recoverVoiceModule();
             }
         }
@@ -336,13 +367,13 @@ void loop()
         
         if (active_screen == ui_Screen1) {
             if (currentMillis - lastScreenChangeMillis >= AUTO_SCREEN_1_DURATION) {
-                Serial.println("[UI] Auto-switching to Screen 2 (Countdown)...");
+                WirelessSerial.println("[UI] Auto-switching to Screen 2 (Countdown)...");
                 lv_scr_load_anim(ui_Screen2, LV_SCR_LOAD_ANIM_MOVE_LEFT, 500, 0, false);
                 lastScreenChangeMillis = currentMillis;
             }
         } else if (active_screen == ui_Screen2) {
             if (currentMillis - lastScreenChangeMillis >= AUTO_SCREEN_2_DURATION) {
-                Serial.println("[UI] Auto-switching back to Screen 1 (Moon)...");
+                WirelessSerial.println("[UI] Auto-switching back to Screen 1 (Moon)...");
                 lv_scr_load_anim(ui_Screen1, LV_SCR_LOAD_ANIM_MOVE_RIGHT, 500, 0, false);
                 lastScreenChangeMillis = currentMillis;
             }
@@ -353,16 +384,23 @@ void loop()
 }
 
 void recoverVoiceModule() {
-    Serial.println("[VOICE] Resetting module and I2C connection...");
+    WirelessSerial.println("[VOICE] Resetting module and I2C connection...");
     if (xSemaphoreTake(asrMutex, portMAX_DELAY)) {
-        // Wire.begin() is called inside asr.begin() for this library
-        if (asr.begin()) {
-            asr.setVolume(15);
-            asr.setMuteMode(0);
-            asr.setWakeTime(18);
-            Serial.println("[VOICE] Recovery successful!");
+        bool ok = false;
+        if (xSemaphoreTake(i2cMutex, portMAX_DELAY)) {
+            ok = asr.begin();
+            if (ok) {
+                asr.setVolume(15);
+                asr.setMuteMode(0);
+                asr.setWakeTime(18);
+            }
+            xSemaphoreGive(i2cMutex);
+        }
+
+        if (ok) {
+            WirelessSerial.println("[VOICE] Recovery successful!");
         } else {
-            Serial.println("[VOICE] CRITICAL: Voice module unresponsive on I2C bus.");
+            WirelessSerial.println("[VOICE] CRITICAL: Voice module unresponsive on I2C bus.");
         }
         xSemaphoreGive(asrMutex);
     }
@@ -426,32 +464,32 @@ void updateAppUI() {
 }
 
 void connectToWiFi() {
-    Serial.println("[WiFi] Starte Verbindungssuche...");
+    WirelessSerial.println("[WiFi] Starte Verbindungssuche...");
     for (int i = 0; i < numNetworks; i++) {
-        Serial.printf("[WiFi] Versuche Verbindung mit SSID: '%s'...\n", networks[i].ssid);
+        WirelessSerial.printf("[WiFi] Versuche Verbindung mit SSID: '%s'...\n", networks[i].ssid);
         WiFi.begin(networks[i].ssid, networks[i].password);
         
         int retryCount = 0;
         while (WiFi.status() != WL_CONNECTED) {
             delay(1000); 
-            Serial.print(".");
+            WirelessSerial.print(".");
             retryCount++;
             if (retryCount > 15) { 
-                Serial.printf("\n[WiFi] Keine Antwort von %s nach 15s.\n", networks[i].ssid);
+                WirelessSerial.printf("\n[WiFi] Keine Antwort von %s nach 15s.\n", networks[i].ssid);
                 WiFi.disconnect();
                 break;
             }
         }
         
         if (WiFi.status() == WL_CONNECTED) {
-            Serial.printf("\n[WiFi] ERFOLGREICH verbunden mit: %s\n", networks[i].ssid);
-            Serial.print("[WiFi] IP-Adresse: ");
-            Serial.println(WiFi.localIP());
+            WirelessSerial.printf("\n[WiFi] ERFOLGREICH verbunden mit: %s\n", networks[i].ssid);
+            WirelessSerial.print("[WiFi] IP-Adresse: ");
+            WirelessSerial.println(WiFi.localIP().toString());
             return;
         }
     }
-    Serial.println("\n[WiFi] KRITISCH: Konnte zu KEINEM der gespeicherten Netzwerke verbinden.");
-    Serial.println("[WiFi] Hinweis: Prüfe Hotspot-Frequenz (nur 2.4GHz!) und Batteriestand.");
+    WirelessSerial.println("\n[WiFi] KRITISCH: Konnte zu KEINEM der gespeicherten Netzwerke verbinden.");
+    WirelessSerial.println("[WiFi] Hinweis: Prüfe Hotspot-Frequenz (nur 2.4GHz!) und Batteriestand.");
 }
 
 // ================= BACKGROUND TASK: CLOCK & SYSTEM =================
@@ -485,25 +523,31 @@ void updateTime(void * parameter) {
                         currentAppState = STATE_BREAK;
                         pomodoroSeconds = 5 * 60; 
                         lv_obj_set_style_text_color(ui_Label_time, lv_color_hex(0x00FF00), LV_PART_MAIN); 
-                        Serial.println("[VOICE] Playing Pause Start (CMD 104)...");
-                        if (xSemaphoreTake(asrMutex, portMAX_DELAY)) {
+                        WirelessSerial.println("[VOICE] Playing Pause Start (CMD 104)...");
+                    if (xSemaphoreTake(asrMutex, portMAX_DELAY)) {
+                        if (xSemaphoreTake(i2cMutex, portMAX_DELAY)) {
                             asr.playByCMDID(104); // "I'm off now" (Test mit Licht-Aus ID)
-                            ignoreAasrUntil = millis() + 4000;
-                            xSemaphoreGive(asrMutex);
+                            xSemaphoreGive(i2cMutex);
                         }
-                        updateAppUI();
+                        ignoreAasrUntil = millis() + 4000;
+                        xSemaphoreGive(asrMutex);
+                    }
+                    updateAppUI();
                     } else {
                         currentAppState = STATE_CLOCK;
                         lv_obj_set_style_text_color(ui_Label_time, lv_color_hex(0xFFFFFF), LV_PART_MAIN);
-                        Serial.println("[VOICE] Playing Timer Done (CMD 23)...");
-                        if (xSemaphoreTake(asrMutex, portMAX_DELAY)) {
+                        WirelessSerial.println("[VOICE] Playing Timer Done (CMD 23)...");
+                    if (xSemaphoreTake(asrMutex, portMAX_DELAY)) {
+                        if (xSemaphoreTake(i2cMutex, portMAX_DELAY)) {
                             asr.playByCMDID(23); // "Done"
                             delay(50); // 50 ms warten
                             asr.playByCMDID(103); // "Done"
-                            ignoreAasrUntil = millis() + 4000;
-                            xSemaphoreGive(asrMutex);
+                            xSemaphoreGive(i2cMutex);
                         }
-                        updateAppUI();
+                        ignoreAasrUntil = millis() + 4000;
+                        xSemaphoreGive(asrMutex);
+                    }
+                    updateAppUI();
                     }
                 }
                 
@@ -588,9 +632,9 @@ void updateTime(void * parameter) {
             previousNtpMillis = currentMillis;
             if (WiFi.status() == WL_CONNECTED) {
                 configTzTime(timeZone, ntpServer);
-                Serial.println("[NTP] Zeit-Synchronisierung angefordert...");
+                WirelessSerial.println("[NTP] Zeit-Synchronisierung angefordert...");
             } else {
-                Serial.println("[NTP] Keine Synchronisierung möglich (WLAN getrennt).");
+                WirelessSerial.println("[NTP] Keine Synchronisierung möglich (WLAN getrennt).");
             }
         }
 

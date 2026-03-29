@@ -1,6 +1,8 @@
 #include "battery.h"
 #include <LilyGo_RGBPanel.h>
 #include <lvgl.h>
+#include <WirelessSerial.h>
+
 
 extern LilyGo_RGBPanel panel;
 extern SemaphoreHandle_t mutex;
@@ -44,7 +46,12 @@ void updateBattery(unsigned long currentMillis) {
     if (currentMillis - last_v_update >= 200) {
         last_v_update = currentMillis;
 
-        int32_t raw_volt = panel.getBattVoltage();
+        int32_t raw_volt = 0;
+        extern SemaphoreHandle_t i2cMutex;
+        if (xSemaphoreTake(i2cMutex, portMAX_DELAY)) {
+            raw_volt = panel.getBattVoltage();
+            xSemaphoreGive(i2cMutex);
+        }
 
         if (filtered_volt == 0) filtered_volt = (float)raw_volt;
         // Light filter for detection responsiveness
@@ -92,7 +99,7 @@ void updateBattery(unsigned long currentMillis) {
         static unsigned long last_print = 0;
         if (currentMillis - last_print >= 5000) {
             last_print = currentMillis;
-            Serial.printf("[BATT] Raw: %dmV, Corr: %.2fV, Perc: %d%%, Smooth: %d%%, Chg: %s\n", 
+            WirelessSerial.printf("[BATT] Raw: %dmV, Corr: %.2fV, Perc: %d%%, Smooth: %d%%, Chg: %s\n", 
                           raw_volt, v_corr, percentage, display_perc, autoCharging ? "YES" : "NO");
         }
 

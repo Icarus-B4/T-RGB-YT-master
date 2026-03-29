@@ -3,6 +3,8 @@
 #include <HTTPClient.h>
 #include <ArduinoJson.h>
 #include <time.h>
+#include <WirelessSerial.h>
+
 
 bool fetchMoonData(MoonData &data) {
     time_t now;
@@ -11,7 +13,7 @@ bool fetchMoonData(MoonData &data) {
     gmtime_r(&now, &timeinfo);
 
     if (timeinfo.tm_year < (2023 - 1900)) {
-        Serial.println("[Moon] NTP sync required before fetching moon data.");
+        WirelessSerial.println("[Moon] NTP sync required before fetching moon data.");
         return false;
     }
 
@@ -28,8 +30,8 @@ bool fetchMoonData(MoonData &data) {
     http.begin(client, url);
     http.setTimeout(15000); // 15 Sekunden warten ( NASA Server ist träge)
     
-    Serial.print("[Moon] Fetching: ");
-    Serial.println(url);
+    WirelessSerial.print("[Moon] Fetching: ");
+    WirelessSerial.println(url);
     
     int httpCode = http.GET();
     bool success = false;
@@ -44,20 +46,20 @@ bool fetchMoonData(MoonData &data) {
         data.phaseName = calculateMoonPhaseName(data.age, data.illumination);
         data.imageIndex = calculateMoonImageIndex(data.age, data.illumination);
 
-        Serial.printf("[Moon] Data Sync: Age=%.2f, Phase=%.2f%%, Name=%s, Index=%d\n", 
+        WirelessSerial.printf("[Moon] Data Sync: Age=%.2f, Phase=%.2f%%, Name=%s, Index=%d\n", 
                       data.age, data.illumination, data.phaseName.c_str(), data.imageIndex);
         success = true;
     } else {
-        Serial.printf("[Moon] HTTP-Fehler: %d\n", httpCode);
+        WirelessSerial.printf("[Moon] HTTP-Fehler: %d\n", httpCode);
         if (httpCode == -1) {
-            Serial.println("[Moon] Grund: Verbindung fehlgeschlagen (Timeout/DNS/SSL).");
-            Serial.printf("[Moon] WiFi-Status: %d (3=Verbunden)\n", WiFi.status());
+            WirelessSerial.println("[Moon] Grund: Verbindung fehlgeschlagen (Timeout/DNS/SSL).");
+            WirelessSerial.printf("[Moon] WiFi-Status: %d (3=Verbunden)\n", WiFi.status());
             if (WiFi.status() == WL_CONNECTED) {
-                Serial.print("[Moon] Lokale IP: ");
-                Serial.println(WiFi.localIP());
+                WirelessSerial.print("[Moon] Lokale IP: ");
+                WirelessSerial.println(WiFi.localIP().toString());
             }
         } else if (httpCode == -11) {
-            Serial.println("[Moon] Grund: Server-Timeout (NASA API ist langsam).");
+            WirelessSerial.println("[Moon] Grund: Server-Timeout (NASA API ist langsam).");
         }
     }
     

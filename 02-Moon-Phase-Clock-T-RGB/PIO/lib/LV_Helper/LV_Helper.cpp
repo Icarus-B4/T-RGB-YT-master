@@ -32,7 +32,14 @@ static void disp_flush( lv_disp_drv_t *disp_drv, const lv_area_t *area, lv_color
 static void touchpad_read( lv_indev_drv_t *indev_driver, lv_indev_data_t *data )
 {
     static int16_t x, y;
-    uint8_t touched =   static_cast<LilyGo_Display *>(indev_driver->user_data)->getPoint(&x, &y, 1);
+    uint8_t touched = 0;
+    extern SemaphoreHandle_t i2cMutex;
+
+    if (xSemaphoreTake(i2cMutex, portMAX_DELAY)) {
+        touched = static_cast<LilyGo_Display *>(indev_driver->user_data)->getPoint(&x, &y, 1);
+        xSemaphoreGive(i2cMutex);
+    }
+
     if ( touched ) {
         data->point.x = x;
         data->point.y = y;
