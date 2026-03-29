@@ -83,21 +83,24 @@ void screen2_swipe_cb(lv_event_t * e) {
 
 
 void pomodoro_event_cb(lv_event_t * e) {
-    if (currentAppState == STATE_CLOCK) {
-        currentAppState = STATE_POMODORO;
-        // pomodoroSeconds = 1 * 10; // 10 Sekunden Test
-        pomodoroSeconds = 25 * 60; // 25 Minuten
-        lv_obj_set_style_text_color(ui_Label_time, lv_color_hex(0xFF4500), LV_PART_MAIN); 
-        if (xSemaphoreTake(asrMutex, portMAX_DELAY)) {
-            asr.playByCMDID(5); // "Starte Pomodoro" Sprachausgabe
-            ignoreAasrUntil = millis() + 4000; // Eigene Stimme 4 Sek. ignorieren
-            xSemaphoreGive(asrMutex);
+    if (currentAppState == STATE_CLOCK || currentAppState == STATE_POMODORO || currentAppState == STATE_BREAK) {
+        // Toggle behavior: If it is already running, tapping cancels it. If it is NOT running, tapping starts it.
+        // Wait, the previous logic was: if STATE_CLOCK, start it. Else cancel it.
+        if (currentAppState == STATE_CLOCK) {
+            currentAppState = STATE_POMODORO;
+            pomodoroSeconds = 25 * 60; // 25 Minuten
+            lv_obj_set_style_text_color(ui_Label_time, lv_color_hex(0xFF4500), LV_PART_MAIN); 
+            if (xSemaphoreTake(asrMutex, portMAX_DELAY)) {
+                asr.playByCMDID(5); // "Starte Pomodoro" Sprachausgabe
+                ignoreAasrUntil = millis() + 4000;
+                xSemaphoreGive(asrMutex);
+            }
+            updateAppUI();
+        } else {
+            currentAppState = STATE_CLOCK;
+            lv_obj_set_style_text_color(ui_Label_time, lv_color_hex(0xFFFFFF), LV_PART_MAIN);
+            updateAppUI();
         }
-        updateAppUI();
-    } else {
-        currentAppState = STATE_CLOCK;
-        lv_obj_set_style_text_color(ui_Label_time, lv_color_hex(0xFFFFFF), LV_PART_MAIN);
-        updateAppUI();
     }
 }
 
@@ -249,11 +252,21 @@ void loop()
         WirelessSerial.printf("VOICE CMD received: %d\n", CMDID);
         
         if (CMDID == 5) { // "Starte Pomodoro"
-            if (currentAppState == STATE_CLOCK) {
-                currentAppState = STATE_POMODORO;
-                pomodoroSeconds = 25 * 60; 
-                lv_obj_set_style_text_color(ui_Label_time, lv_color_hex(0xFF4500), LV_PART_MAIN); 
-                updateAppUI();
+            currentAppState = STATE_POMODORO;
+            pomodoroSeconds = 25 * 60; 
+            lv_obj_set_style_text_color(ui_Label_time, lv_color_hex(0xFF4500), LV_PART_MAIN); 
+            
+            // Ensure we are awake
+            if (isStandby) {
+                isStandby = false;
+                panel.setBrightness(160);
+            }
+            updateAppUI();
+            
+            // Switch to Screen 1 if necessary
+            if (lv_scr_act() != ui_Screen1) {
+                lv_scr_load_anim(ui_Screen1, LV_SCR_LOAD_ANIM_MOVE_RIGHT, 300, 0, false);
+                lastScreenChangeMillis = millis();
             }
         } else if (CMDID == 6) { // "Stop Pomodoro"
             if (currentAppState != STATE_CLOCK) {
